@@ -1,0 +1,136 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Product;
+use App\Models\Shop;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+
+class ShopifyProductService
+{
+    /**
+     * Đồng bộ toàn bộ sản phẩm từ Shopify về database, có xử lý phân trang (Link header pagination).
+     */
+    public function syncProducts(Shop $shop): array
+    {
+        $apiVersion = config('shopify.api_version', '2024-04');
+        $baseUrl = "https://{$shop->shop_domain}/admin/api/{$apiVersion}";
+        $url = "{$baseUrl}/products.json?limit=250";
+
+        $totalSynced = 0;
+        $totalCreated = 0;
+        $totalUpdated = 0;
+        $page = 1;
+
+        do {
+            Log::info("Đang đồng bộ trang {$page} từ shop {$shop->shop_domain}...");
+
+            $response = Http::withHeaders([
+                'X-Shopify-Access-Token' => $shop->access_token,
+                'Content-Type'           => 'application/json',
+            ])->timeout(30)->get($url);
+
+            if (!$response->successful()) {
+                Log::error("Lỗi khi gọi Shopify Products API: " . $response->body());
+                throw new \Exception("Lỗi từ Shopify API ({$response->status()}): " . $response->body());
+            }
+
+            $products = $response->json('products') ?? [];
+
+            foreach ($products as $p) {
+                $shopifyId   = $p['id'];
+                $title       = $p['title'] ?? '';
+                // Làm sạch HTML tags trong description
+                $rawDesc     = $p['body_html'] ?? '';
+                $description = trim(strip_tags($rawDesc));
+                $vendor      = $p['vendor'] ?? null;
+                $productType = $p['product_type'] ?? null;
+                $tags        = is_array($p['tags'] ?? null) ? implode(', ', $p['tags']) : ($p['tags'] ?? null);
+                $variants    = $p['variants'] ?? [];
+
+                // Lấy giá của variant đầu tiên
+                $price = null;
+                if (!empty($variants) && isset($variants[0]['price'])) {
+                    $price = (float) $variants[0]['price'];
+                }
+
+                // Lấy ảnh đại diện
+                $imageUrl = $p['image']['src'] ?? ($p['images'][0]['src'] ?? null);
+
+                $createdAt = isset($p['created_at']) ? Carbon::parse($p['created_at']) : null;
+                $updatedAt = isset($p['updated_at']) ? Carbon::parse($p['updated_at']) : null;
+
+                // Tính toán hash dữ liệu đại diện để tối ưu tạo Vector sau này
+                $dataRepresentation = "{$title}|{$description}|{$vendor}|{$productType}|{$tags}|{$price}";
+                $dataHash = md5($dataRepresentation);
+
+                $product = Product::where('shopify_product_id', $shopifyId)->first();
+
+                if ($product) {
+                    $product->update([
+                        'title'              => $title,
+                        'description'        => $description,
+                        'vendor'             => $vendor,
+                        'product_type'       => $productType,
+                        'tags'               => $tags,
+                        'variants'           => $variants,
+                        'price'              => $price,
+                        'image_url'          => $imageUrl,
+                        'shopify_created_at' => $createdAt,
+                        'shopify_updated_at' => $updatedAt,
+                        'synced_at'          => now(),
+                        'data_hash'          => $dataHash,
+                    ]);
+                    $totalUpdated++;
+                } else {
+                    Product::create([
+                        'shopify_product_id' => $shopifyId,
+                        'title'              => $title,
+                        'description'        => $description,
+                        'vendor'             => $vendor,
+                        'product_type'       => $productType,
+                        'tags'               => $tags,
+                        'variants'           => $variants,
+                        'price'              => $price,
+                        'image_url'          => $imageUrl,
+                        'shopify_created_at' => $createdAt,
+                        'shopify_updated_at' => $updatedAt,
+                        'synced_at'          => now(),
+                        'data_hash'          => $dataHash,
+                    ]);
+                    $totalCreated++;
+                }
+
+                $totalSynced++;
+            }
+
+            // Xử lý phân trang thông qua Link header của Shopify
+            $linkHeader = $response->header('Link');
+            $nextUrl = null;
+
+            if ($linkHeader) {
+                // Link header format: <https://.../products.json?limit=250&page_info=xxx>; rel="next"
+                $links = explode(',', $linkHeader);
+                foreach ($links as $link) {
+                    if (str_contains($link, 'rel="next"')) {
+                        if (preg_match('/<([^>]+)>/', $link, $matches)) {
+                            $nextUrl = $matches[1];
+                            break;
+                        }
+                    }
+                }
+            }
+
+            $url = $nextUrl;
+            $page++;
+        } while ($url !== null);
+
+        return [
+            'total_synced'  => $totalSynced,
+            'total_created' => $totalCreated,
+            'total_updated' => $totalUpdated,
+        ];
+    }
+}
