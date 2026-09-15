@@ -17,19 +17,34 @@ class ProductController extends Controller
         $shopDomain = $request->query('shop', session('shopify_oauth_shop'));
         $shop = $shopDomain ? Shop::where('shop_domain', $shopDomain)->first() : Shop::latest()->first();
 
-        $products = Product::whereNull('deleted_at')
-            ->orderBy('shopify_created_at', 'desc')
-            ->paginate(15);
+        $tab = $request->query('tab', 'active');
+        $activeCount = Product::whereNull('deleted_at')->count();
+        $deletedCount = Product::whereNotNull('deleted_at')->count();
+
+        if ($tab === 'deleted') {
+            $products = Product::whereNotNull('deleted_at')
+                ->orderBy('deleted_at', 'desc')
+                ->paginate(15)
+                ->withQueryString();
+        } else {
+            $products = Product::whereNull('deleted_at')
+                ->orderBy('shopify_created_at', 'desc')
+                ->paginate(15)
+                ->withQueryString();
+        }
 
         if ($request->wantsJson()) {
             return response()->json([
-                'shop'     => $shop?->shop_domain,
-                'total'    => $products->total(),
-                'products' => $products->items(),
+                'shop'          => $shop?->shop_domain,
+                'tab'           => $tab,
+                'active_count'  => $activeCount,
+                'deleted_count' => $deletedCount,
+                'total'         => $products->total(),
+                'products'      => $products->items(),
             ]);
         }
 
-        return view('products.index', compact('products', 'shop'));
+        return view('products.index', compact('products', 'shop', 'tab', 'activeCount', 'deletedCount'));
     }
 
     /**

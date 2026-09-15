@@ -10,8 +10,6 @@ use Pgvector\Laravel\Vector;
 class SearchController extends Controller
 {
     /**
-     * Màn hình Semantic Search và xử lý tìm kiếm bằng Vector.
-     * Đúng tiêu chí Mục 4: Trả về Top 5 sản phẩm phù hợp nhất theo Cosine Similarity.
      */
     public function index(Request $request, EmbeddingService $embeddingService)
     {

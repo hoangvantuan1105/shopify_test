@@ -29,7 +29,7 @@ class SearchProductsCommand extends Command
     public function handle(EmbeddingService $service)
     {
         $query = $this->argument('query');
-        $this->info("🔍 Đang tìm kiếm theo ngữ nghĩa cho: '{$query}'...");
+        $this->info(" Đang tìm kiếm theo ngữ nghĩa cho: '{$query}'...");
 
         $startTime = microtime(true);
 
