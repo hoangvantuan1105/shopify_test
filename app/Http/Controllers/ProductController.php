@@ -68,4 +68,33 @@ class ProductController extends Controller
             return redirect()->route('products.index', ['shop' => $shop->shop_domain])->with('error', 'Lỗi khi đồng bộ: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Kích hoạt tạo vector embedding cho toàn bộ sản phẩm trong DB.
+     */
+    public function embedAll(Request $request, \App\Services\EmbeddingService $service)
+    {
+        try {
+            $force = $request->boolean('force', false);
+            $result = $service->embedAllProducts($force);
+
+            $msg = "Đã vector hóa xong {$result['total']} sản phẩm (Mới: {$result['processed']}, Bỏ qua không đổi: {$result['skipped']})!";
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'status'  => 'success',
+                    'message' => $msg,
+                    'data'    => $result,
+                ]);
+            }
+
+            return redirect()->back()->with('success', $msg);
+        } catch (\Exception $e) {
+            if ($request->wantsJson()) {
+                return response()->json(['error' => $e->getMessage()], 500);
+            }
+            return redirect()->back()->with('error', 'Lỗi khi tạo vector: ' . $e->getMessage());
+        }
+    }
 }
+

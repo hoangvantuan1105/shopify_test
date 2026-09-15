@@ -31,13 +31,30 @@
                 <p class="text-sm text-gray-500 mt-1">Đồng bộ sản phẩm từ Shopify Admin và quản lý dữ liệu Vector Search.</p>
             </div>
             
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 flex-wrap">
+                <a href="{{ route('search.index') }}" class="inline-flex items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-sm transition">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                    </svg>
+                    <span> Tìm kiếm</span>
+                </a>
+
+                <form action="{{ route('products.embed') }}" method="POST" id="embedForm">
+                    @csrf
+                    <button type="submit" id="embedBtn" class="inline-flex items-center px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-lg shadow-sm transition">
+                        <svg id="embedIcon" class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                        <span id="embedText"> Tạo Vector Embedding</span>
+                    </button>
+                </form>
+
                 <form action="{{ route('products.sync') }}" method="POST" id="syncForm">
                     @csrf
                     @if($shop)
                         <input type="hidden" name="shop" value="{{ $shop->shop_domain }}">
                     @endif
-                    <button type="submit" id="syncBtn" class="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                    <button type="submit" id="syncBtn" class="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg shadow-sm transition">
                         <svg id="syncIcon" class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                         </svg>
@@ -164,7 +181,7 @@
                                     <td class="px-6 py-4 whitespace-nowrap">
                                         @if($product->embedding)
                                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                ✓ 1536 dim
+                                                ✓ 768 dim
                                             </span>
                                         @else
                                             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
@@ -191,16 +208,28 @@
     </div>
 
     <script>
-        const form = document.getElementById('syncForm');
-        const btn = document.getElementById('syncBtn');
-        const text = document.getElementById('syncText');
-        const icon = document.getElementById('syncIcon');
+        const syncForm = document.getElementById('syncForm');
+        const syncBtn = document.getElementById('syncBtn');
+        const syncText = document.getElementById('syncText');
+        const syncIcon = document.getElementById('syncIcon');
 
-        form.addEventListener('submit', function() {
-            btn.disabled = true;
-            btn.classList.add('opacity-75', 'cursor-not-allowed');
-            text.innerText = 'Đang đồng bộ từ Shopify...';
-            icon.classList.add('animate-spin');
+        syncForm.addEventListener('submit', function() {
+            syncBtn.disabled = true;
+            syncBtn.classList.add('opacity-75', 'cursor-not-allowed');
+            syncText.innerText = 'Đang đồng bộ...';
+            syncIcon.classList.add('animate-spin');
+        });
+
+        const embedForm = document.getElementById('embedForm');
+        const embedBtn = document.getElementById('embedBtn');
+        const embedText = document.getElementById('embedText');
+        const embedIcon = document.getElementById('embedIcon');
+
+        embedForm.addEventListener('submit', function() {
+            embedBtn.disabled = true;
+            embedBtn.classList.add('opacity-75', 'cursor-not-allowed');
+            embedText.innerText = 'Đang tạo Vector...';
+            embedIcon.classList.add('animate-spin');
         });
     </script>
 </body>

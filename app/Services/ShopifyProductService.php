@@ -22,6 +22,7 @@ class ShopifyProductService
         $totalSynced = 0;
         $totalCreated = 0;
         $totalUpdated = 0;
+        $syncedIds = [];
         $page = 1;
 
         do {
@@ -41,6 +42,7 @@ class ShopifyProductService
 
             foreach ($products as $p) {
                 $shopifyId   = $p['id'];
+                $syncedIds[] = $shopifyId;
                 $title       = $p['title'] ?? '';
                 // Làm sạch HTML tags trong description
                 $rawDesc     = $p['body_html'] ?? '';
@@ -127,10 +129,25 @@ class ShopifyProductService
             $page++;
         } while ($url !== null);
 
+        // Đánh dấu deleted_at và loại bỏ vector đối với các sản phẩm đã bị xóa trên Shopify (Yêu cầu Mục 5)
+        $totalDeleted = 0;
+        if (!empty($syncedIds)) {
+            $totalDeleted = Product::whereNotIn('shopify_product_id', $syncedIds)
+                ->whereNull('deleted_at')
+                ->update([
+                    'deleted_at' => now(),
+                    'embedding'  => null,
+                ]);
+            if ($totalDeleted > 0) {
+                Log::info("Đã đánh dấu xóa và loại bỏ vector của {$totalDeleted} sản phẩm không còn trên Shopify.");
+            }
+        }
+
         return [
             'total_synced'  => $totalSynced,
             'total_created' => $totalCreated,
             'total_updated' => $totalUpdated,
+            'total_deleted' => $totalDeleted,
         ];
     }
 }
