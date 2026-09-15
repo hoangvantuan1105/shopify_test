@@ -5,89 +5,20 @@
 ---
 
 ## 📑 Mục lục
-1. [Kiến trúc hệ thống (Architecture)](#1-kiến-trúc-hệ-thống-architecture)
-2. [Cài đặt dự án (Installation)](#2-cài-đặt-dự-án-installation)
-3. [Cấu hình môi trường (Configuration)](#3-cấu-hình-môi-trường-configuration)
-4. [Cấu hình Shopify App (Shopify Setup)](#4-cấu-hình-shopify-app-shopify-setup)
-5. [Cơ sở dữ liệu & Lưu trữ Vector (Database & Vector Storage)](#5-cơ-sở-dữ-liệu--lưu-trữ-vector-database--vector-storage)
-6. [Mô hình Embedding (Embedding Model & Provider)](#6-mô-hình-embedding-embedding-model--provider)
-7. [Cơ chế Tìm kiếm Ngữ nghĩa (Vector Search / Semantic Search)](#7-cơ-chế-tìm-kiếm-ngữ-nghĩa-vector-search--semantic-search)
-8. [Đồng bộ Webhook thời gian thực (Shopify Webhooks)](#8-đồng-bộ-webhook-thời-gian-thực-shopify-webhooks)
+1. [Installation (Cách cài đặt project)](#1-installation-cách-cài-đặt-project)
+2. [Configuration (Các biến môi trường cần thiết)](#2-configuration-các-biến-môi-trường-cần-thiết)
+3. [Shopify Setup (Cách cấu hình Shopify App)](#3-shopify-setup-cách-cấu-hình-shopify-app)
+4. [Database (Cơ sở dữ liệu sử dụng & Schema)](#4-database-cơ-sở-dữ-liệu-sử-dụng--schema)
+5. [Embedding (Model & Provider sử dụng)](#5-embedding-model--provider-sử-dụng)
+6. [Vector Search (Giải thích cách lưu và tìm kiếm vector)](#6-vector-search-giải-thích-cách-lưu-và-tìm-kiếm-vector)
+7. [Architecture (Mô tả luồng dữ liệu Shopify → Semantic Search)](#7-architecture-mô-tả-luồng-dữ-liệu-shopify--semantic-search)
+8. [Shopify Webhooks (Đồng bộ thời gian thực)](#8-shopify-webhooks-đồng-bộ-thời-gian-thực)
 
 ---
 
-## 1. Kiến trúc hệ thống (Architecture)
+## 1. Installation (Cách cài đặt project)
 
-### Sơ đồ luồng dữ liệu (End-to-End Pipeline)
-
-```mermaid
-flowchart TD
-    subgraph Shopify["Shopify Platform"]
-        Shop[Merchant Store]
-        Webhook[Shopify Webhooks]
-    end
-
-    subgraph App["Laravel Application"]
-        OAuth[ShopifyAuthController]
-        SyncService[ShopifyProductService]
-        WebhookController[ShopifyWebhookController]
-        EmbedService[EmbeddingService]
-        SearchController[SearchController]
-    end
-
-    subgraph Storage["PostgreSQL + pgvector"]
-        DB[(products & shops table)]
-        IVF[(ivfflat Vector Index)]
-    end
-
-    subgraph AI["Ollama AI Container"]
-        Ollama[nomic-embed-text 768-dim]
-    end
-
-    Shop -->|OAuth 2.0 Install| OAuth
-    OAuth -->|Save Token| DB
-    Shop -->|REST Admin API / Link Header| SyncService
-    Webhook -->|create / update / delete| WebhookController
-    SyncService -->|Upsert Products| DB
-    WebhookController -->|Upsert / Soft-delete| DB
-    DB -->|Extract Context + data_hash| EmbedService
-    EmbedService -->|HTTP Request| Ollama
-    Ollama -->|768-dim Vector| EmbedService
-    EmbedService -->|Store Embedding| IVF
-
-    User([User Search Query]) -->|GET /search?q=...| SearchController
-    SearchController -->|Embed Query| Ollama
-    Ollama -->|Query Vector| SearchController
-    SearchController -->|Cosine Distance <=> | IVF
-    IVF -->|Top 5 Results| SearchController
-```
-
-### Chi tiết các bước trong luồng:
-1. **Shopify OAuth 2.0**: Merchant cài đặt App vào Development Store, xác thực chữ ký HMAC và mã nonce `state` chống CSRF. Hệ thống cấp `access_token` và lưu vào bảng `shops`.
-2. **Admin API & Product Sync**:
-   * App gọi Shopify REST Admin API (`/admin/api/2024-04/products.json?limit=250`).
-   * Sử dụng **Cursor-based pagination qua HTTP `Link` header** (`rel="next"`) để lấy toàn bộ dữ liệu nhiều trang, không giới hạn số lượng.
-   * Xử lý sản phẩm bị xóa: các sản phẩm không còn tồn tại trên Shopify sẽ được đánh dấu `deleted_at = now()` và loại bỏ vector (`embedding = null`).
-3. **Data Representation & Hash Optimization**:
-   * Dữ liệu đại diện được chuẩn hóa: `Title | Description | Vendor | Product Type | Tags | Price`.
-   * Tính mã băm `data_hash = md5(...)`. Chỉ sinh lại vector khi `data_hash` thay đổi hoặc vector chưa có, giúp tối ưu chi phí và tốc độ.
-4. **Embedding Pipeline**:
-   * Gọi mô hình cục bộ `nomic-embed-text` qua Ollama API (`http://ollama:11434/api/embeddings`) để chuyển văn bản thành vector 768 chiều.
-5. **Vector Storage**:
-   * Lưu trữ trực tiếp trong PostgreSQL dưới kiểu dữ liệu `vector(768)`.
-   * Tối ưu truy vấn bằng chỉ mục `ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`.
-6. **Semantic Search**:
-   * Người dùng nhập từ khóa ngữ nghĩa (ví dụ: *"áo nam màu đen dưới 500k"*, *"dụng cụ trượt tuyết mùa đông"*).
-   * Chuyển truy vấn thành vector 768 chiều.
-   * Tính toán khoảng cách Cosine Distance (`<=>`) trực tiếp trong câu lệnh SQL:
-     $$\text{Similarity Score} = (1 - \text{Cosine Distance}) \times 100\%$$
-   * Trả về **Top 5 sản phẩm tương đồng nhất**, kèm ảnh, giá, tags và thời gian truy vấn (Query time ms).
-
----
-
-## 2. Cài đặt dự án (Installation)
-
-Dự án được đóng gói trọn vẹn thông qua **Docker Compose** (bao gồm PHP 8.3/Laravel 12, PostgreSQL 16 + pgvector, và Ollama).
+Dự án được đóng gói trọn gói và chuẩn hóa qua **Docker Compose** (chạy sẵn PHP 8.3/Laravel 12, PostgreSQL 16 + pgvector, và Ollama AI container).
 
 ### Bước 1: Clone repository
 ```bash
@@ -95,19 +26,19 @@ git clone https://github.com/hoangvantuan1105/shopify_test.git
 cd shopify_test
 ```
 
-### Bước 2: Tạo file cấu hình môi trường
+### Bước 2: Khởi tạo file cấu hình môi trường
 ```bash
 cp .env.example .env
 ```
-*(Chỉnh sửa các biến `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL` trong file `.env` theo thông tin App của bạn).*
+*(Xem mục [Configuration](#2-configuration-các-biến-môi-trường-cần-thiết) để điền thông tin Shopify API Key và Secret).*
 
-### Bước 3: Khởi chạy Docker Containers
+### Bước 3: Khởi chạy các dịch vụ Docker
 ```bash
 docker compose up -d --build
 ```
-Kiểm tra 3 container đang chạy ổn định:
+Kiểm tra đảm bảo 3 container đang chạy ổn định:
 * `shopify_app`: Laravel application (Port `8000`)
-* `shopify_db`: PostgreSQL với pgvector (Port `5432`)
+* `shopify_db`: PostgreSQL 16 với extension pgvector (Port `5432`)
 * `shopify_ollama`: Ollama server (Port `11434`)
 
 ### Bước 4: Chạy Migration cơ sở dữ liệu
@@ -115,67 +46,85 @@ Kiểm tra 3 container đang chạy ổn định:
 docker compose exec app php artisan migrate
 ```
 
-### Bước 5: Tải mô hình Embedding vào Ollama
+### Bước 5: Tải mô hình Embedding `nomic-embed-text` vào Ollama
 ```bash
 docker compose exec ollama ollama pull nomic-embed-text
 ```
 
 ### Bước 6: Truy cập ứng dụng
 * Giao diện Quản lý sản phẩm & Sync: `http://localhost:8000/products`
-* Giao diện Semantic Search: `http://localhost:8000/search`
+* Giao diện Tìm kiếm ngữ nghĩa: `http://localhost:8000/search`
 
 ---
 
-## 3. Cấu hình môi trường (Configuration)
+## 2. Configuration (Các biến môi trường cần thiết)
 
-Các biến môi trường bắt buộc cần khai báo trong file `.env`:
+File `.env` cần khai báo đầy đủ các nhóm biến sau:
 
-| Biến môi trường | Giá trị mẫu / Mô tả |
+| Biến môi trường | Giá trị mẫu / Mục đích |
 | :--- | :--- |
+| `APP_NAME` | `Laravel` |
+| `APP_ENV` | `local` |
+| `APP_KEY` | Key mã hóa của Laravel (sinh tự động qua `php artisan key:generate`) |
 | `APP_URL` | `http://localhost:8000` |
 | `DB_CONNECTION` | `pgsql` |
-| `DB_HOST` | `db` (tên service trong Docker) |
+| `DB_HOST` | `db` (Tên container database trong docker-compose) |
 | `DB_PORT` | `5432` |
 | `DB_DATABASE` | `shopify_vector_search` |
 | `DB_USERNAME` | `postgres` |
 | `DB_PASSWORD` | `secret` |
-| `SHOPIFY_API_KEY` | API Key lấy từ Shopify Partners Dashboard |
-| `SHOPIFY_API_SECRET` | API Secret Key từ Shopify Partners Dashboard |
-| `SHOPIFY_APP_URL` | Domain public (Ngrok URL, ví dụ: `https://your-ngrok.ngrok-free.dev`) |
-| `SHOPIFY_SCOPES` | `read_products` (Least-Privilege) |
-| `SHOPIFY_API_VERSION` | `2024-04` |
-| `EMBEDDING_PROVIDER` | `ollama` |
+| `SHOPIFY_API_KEY` | Client ID lấy từ Shopify Partners Dashboard |
+| `SHOPIFY_API_SECRET`| Client Secret lấy từ Shopify Partners Dashboard |
+| `SHOPIFY_APP_URL` | Domain công khai (URL Ngrok trỏ về port 8000, ví dụ: `https://your-tunnel.ngrok-free.dev`) |
+| `SHOPIFY_SCOPES` | `read_products` (Tuân thủ nguyên tắc Least-Privilege) |
+| `SHOPIFY_API_VERSION`| `2024-04` |
+| `EMBEDDING_PROVIDER`| `ollama` (Mặc định chạy local qua Ollama) |
 | `OLLAMA_BASE_URL` | `http://ollama:11434` |
-| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` |
+| `OLLAMA_EMBED_MODEL`| `nomic-embed-text` |
 
 ---
 
-## 4. Cấu hình Shopify App (Shopify Setup)
+## 3. Shopify Setup (Cách cấu hình Shopify App)
 
-1. Đăng nhập vào [Shopify Partners Dashboard](https://partners.shopify.com/) và vào mục **Apps** > **Create App**.
-2. Chọn **Create app manually**, đặt tên cho ứng dụng (ví dụ: `Product Vector Search`).
-3. Trong mục **App setup**:
-   * **App URL**: Điền URL Ngrok trỏ về port 8000 (ví dụ: `https://your-domain.ngrok-free.dev`).
+1. **Tạo App trên Shopify Partners:**
+   * Đăng nhập [Shopify Partners Dashboard](https://partners.shopify.com/) $\rightarrow$ **Apps** $\rightarrow$ **Create App**.
+   * Chọn **Create app manually**, đặt tên App (ví dụ: `Vector Search App`).
+
+2. **Cấu hình URLs trong App Setup:**
+   * **App URL**: Điền đường dẫn Ngrok công khai (ví dụ: `https://your-tunnel.ngrok-free.dev`).
    * **Allowed redirection URL(s)**:
      ```
-     https://your-domain.ngrok-free.dev/auth/callback
+     https://your-tunnel.ngrok-free.dev/auth/callback
      ```
-4. Lưu cấu hình và sao chép **Client ID** và **Client Secret** vào file `.env` (`SHOPIFY_API_KEY` và `SHOPIFY_API_SECRET`).
-5. **Cài đặt vào Development Store**:
-   Truy cập trình duyệt theo định dạng:
+
+3. **Cập nhật thông tin xác thực vào `.env`:**
+   * Sao chép **Client ID** vào `SHOPIFY_API_KEY`.
+   * Sao chép **Client Secret** vào `SHOPIFY_API_SECRET`.
+   * Cập nhật `SHOPIFY_APP_URL=https://your-tunnel.ngrok-free.dev`.
+
+4. **Cài đặt App vào Development Store:**
+   * Truy cập từ trình duyệt theo định dạng:
+     ```
+     http://localhost:8000/auth?shop=your-development-store.myshopify.com
+     ```
+   * Shopify sẽ chuyển hướng đến màn hình xác nhận phân quyền `read_products`.
+   * Merchant nhấn **Install app**, hệ thống tự động lưu `access_token` và chuyển về trang quản lý `/products`.
+
+5. **Đăng ký Webhook tự động với Shopify:**
+   ```bash
+   docker compose exec app php artisan shopify:register-webhooks
    ```
-   http://localhost:8000/auth?shop=your-development-store.myshopify.com
-   ```
-   Hệ thống sẽ chuyển hướng sang trang OAuth của Shopify để Merchant xác nhận cấp quyền `read_products`. Sau khi duyệt, Merchant được chuyển về màn hình quản lý `/products`.
 
 ---
 
-## 5. Cơ sở dữ liệu & Lưu trữ Vector (Database & Vector Storage)
+## 4. Database (Cơ sở dữ liệu sử dụng & Schema)
 
-### Cơ sở dữ liệu được sử dụng:
-* **PostgreSQL 16** kết hợp extension **`pgvector`** (chạy từ Docker image chính thức `pgvector/pgvector:pg16`).
+### Hệ quản trị cơ sở dữ liệu:
+* **PostgreSQL 16** tích hợp extension **`pgvector`** (`pgvector/pgvector:pg16`).
 
-### Cấu trúc bảng `products`:
+### Bảng `products`:
+Lưu trữ thông tin chi tiết của sản phẩm đồng bộ từ Shopify và vector embedding 768 chiều:
+
 ```sql
 CREATE TABLE products (
     id BIGSERIAL PRIMARY KEY,
@@ -199,8 +148,8 @@ CREATE TABLE products (
 );
 ```
 
-### Cơ chế Indexing Vector:
-Để tăng tốc độ tìm kiếm vector gần đúng (Approximate Nearest Neighbors - ANN) trên tập dữ liệu lớn, bảng `products` được đánh chỉ mục **IVFFlat** sử dụng phép đo góc Cosine:
+### Chỉ mục tăng tốc tìm kiếm Vector (Vector Index):
+Sử dụng chỉ mục **IVFFlat** với hàm khoảng cách Cosine Distance (`vector_cosine_ops`) để tìm kiếm láng giềng gần đúng (Approximate Nearest Neighbors - ANN) cực nhanh:
 ```sql
 CREATE INDEX products_embedding_idx 
 ON products USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
@@ -208,33 +157,33 @@ ON products USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 ---
 
-## 6. Mô hình Embedding (Embedding Model & Provider)
+## 5. Embedding (Model & Provider sử dụng)
 
-* **Provider**: **Ollama** (Self-hosted chạy độc lập trong Docker container `shopify_ollama`).
-  * *Lý do lựa chọn*: Hoàn toàn miễn phí, bảo mật nội bộ dữ liệu sản phẩm, không lo bị nghẽn rate-limit hoặc hết quota như các dịch vụ thương mại ngoài.
-* **Mô hình**: **`nomic-embed-text`** (768 chiều).
-  * *Ưu điểm*: Được huấn luyện chuyên sâu cho tác vụ Information Retrieval (Semantic Search), hiệu năng vượt trội, kích thước nhẹ (~274MB) và thời gian sinh vector chỉ từ 10-30ms/sản phẩm.
-* **Chuỗi văn bản đại diện ngữ nghĩa (Context Construction)**:
+* **Provider**: **Ollama** (Self-hosted chạy cục bộ trong Docker container `shopify_ollama`).
+  * *Lợi ích*: Không phát sinh chi phí API token (miễn phí 100%), không giới hạn rate-limit, bảo mật dữ liệu sản phẩm trong mạng nội bộ.
+* **Model**: **`nomic-embed-text`** (768 chiều).
+  * *Đặc điểm*: Mô hình embedding mã nguồn mở hàng đầu cho tác vụ Information Retrieval / Semantic Search, dung lượng nhỏ (~274MB), tốc độ suy luận nhanh (10-25ms/sản phẩm).
+* **Quy tắc tạo chuỗi đại diện ngữ nghĩa (Context String):**
+  ```php
+  $representationText = "Title: {$title}. Description: {$description}. Vendor: {$vendor}. Category: {$productType}. Tags: {$tags}. Price: ${$price}";
   ```
-  {Title} | {Description} | Nhà sản xuất: {Vendor} | Thể loại: {Product Type} | Phân loại: {Tags} | Giá: {Price}$
-  ```
-* **Artisan Command hỗ trợ:**
-  ```bash
-  # Vector hóa các sản phẩm mới hoặc có dữ liệu thay đổi
-  docker compose exec app php artisan products:embed
-
-  # Buộc tạo lại vector cho toàn bộ sản phẩm
-  docker compose exec app php artisan products:embed --force
-  ```
+* **Cơ chế tối ưu hóa `data_hash` (Mục 6 đề bài):**
+  * Mỗi sản phẩm được gán mã băm `data_hash = md5($representationText)`.
+  * Khi đồng bộ hoặc nhận webhook cập nhật, nếu `data_hash` không thay đổi so với giá trị cũ trong DB $\rightarrow$ **Hệ thống bỏ qua bước gọi Ollama**, tránh lãng phí tài nguyên CPU/GPU.
 
 ---
 
-## 7. Cơ chế Tìm kiếm Ngữ nghĩa (Vector Search / Semantic Search)
+## 6. Vector Search (Giải thích cách lưu và tìm kiếm vector)
 
-### Thuật toán tìm kiếm:
-Khi nhận được câu truy vấn từ Merchant:
-1. Hệ thống chuyển đổi câu truy vấn thành vector 768 chiều thông qua Ollama.
-2. Thực thi truy vấn SQL với toán tử khoảng cách cosine `<=>`:
+### 1. Cách lưu vector:
+* Vector được sinh ra từ mô hình `nomic-embed-text` là mảng 768 số thực (`array<float>`).
+* Được lưu trực tiếp vào cột `embedding` kiểu `vector(768)` trong bảng `products` của PostgreSQL nhờ extension `pgvector`.
+* Eloquent Model `Product` sử dụng cast `Pgvector\Laravel\Vector` để serialize/deserialize mảng vector tự động.
+
+### 2. Cách tìm kiếm vector (Semantic Search Pipeline):
+1. **Vector hóa truy vấn:** Khi người dùng nhập câu tìm kiếm ngữ nghĩa (ví dụ: *"áo nam màu đen dưới 500k"* hoặc *"dụng cụ trượt tuyết mùa đông"*), hệ thống gửi chuỗi này tới Ollama API để tạo một `query_vector` 768 chiều.
+2. **Tính khoảng cách Cosine Distance trong SQL:**
+   Thực thi câu lệnh SQL với toán tử khoảng cách cosine `<=>`:
    ```sql
    SELECT id, shopify_product_id, title, price, image_url, vendor,
           (1 - (embedding <=> :query_vector::vector)) AS similarity
@@ -244,31 +193,101 @@ Khi nhận được câu truy vấn từ Merchant:
    ORDER BY embedding <=> :query_vector::vector ASC
    LIMIT 5;
    ```
-3. Kết quả trả về gồm **Top 5 sản phẩm có độ tương đồng ngữ nghĩa cao nhất** kèm thời gian xử lý (Query Time tính bằng mili-giây).
-
-### Giao diện và API:
-* **Giao diện Web**: Truy cập `http://localhost:8000/search`
-* **JSON REST API**:
-  ```bash
-  curl -H "Accept: application/json" "http://localhost:8000/search?q=snowboard+winter"
-  ```
+3. **Quy đổi ra Độ tương đồng % (Similarity Score):**
+   $$\text{Similarity Score} = (1 - \text{Cosine Distance}) \times 100\%$$
+4. **Kết quả hiển thị:**
+   * Trả về **Top 5 sản phẩm tương đồng nhất**, bao gồm: Ảnh sản phẩm, Tên sản phẩm, Giá, Nhà sản xuất, Điểm tương đồng % và Thời gian truy vấn (Query time tính bằng mili-giây).
+   * Hỗ trợ giao diện Web tại `/search` và JSON REST API (`Accept: application/json`).
 
 ---
 
-## 8. Đồng bộ Webhook thời gian thực (Shopify Webhooks)
+## 7. Architecture (Mô tả luồng dữ liệu Shopify → Semantic Search)
 
-Ứng dụng cung cấp các endpoint webhook để tiếp nhận thay đổi sản phẩm theo thời gian thực từ Shopify:
+### Chuỗi luồng dữ liệu:
+**`Shopify` $\longrightarrow$ `Admin API` $\longrightarrow$ `Product Sync` $\longrightarrow$ `Database` $\longrightarrow$ `Embedding` $\longrightarrow$ `Vector Storage` $\longrightarrow$ `Semantic Search`**
 
-| Event | Endpoint | Xử lý |
+### Sơ đồ luồng dữ liệu chi tiết (End-to-End Diagram):
+
+```mermaid
+flowchart TD
+    subgraph Shopify["1. Shopify Platform"]
+        Store[Development Store]
+        Webhook[Shopify Webhooks]
+    end
+
+    subgraph AdminAPI["2. Admin API Layer"]
+        RestAPI["REST API: /admin/api/2024-04/products.json?limit=250"]
+        LinkHeader["Cursor Pagination via Link Header (rel=next)"]
+    end
+
+    subgraph SyncEngine["3. Product Sync Engine"]
+        SyncService["ShopifyProductService / ShopifyWebhookController"]
+        HTMLCleaner["Strip HTML & Extract Variants/Price"]
+        HashCheck{"Check data_hash changed?"}
+    end
+
+    subgraph DatabaseLayer["4. Database & 6. Vector Storage"]
+        Postgres[(PostgreSQL 16 + pgvector)]
+        IVFIndex[("IVFFlat Index (vector_cosine_ops)")]
+    end
+
+    subgraph EmbeddingEngine["5. Embedding Pipeline"]
+        OllamaService["EmbeddingService (Ollama nomic-embed-text)"]
+        Vector768["Generate 768-dim Vector"]
+    end
+
+    subgraph SearchApp["7. Semantic Search"]
+        SearchUI["Web Search UI / REST API"]
+        QueryEmbed["Query Vectorization"]
+        CosineCalc["Cosine Distance <=> Calculation"]
+        Top5["Top 5 Ranked Products"]
+    end
+
+    Store -->|GET Products| RestAPI
+    RestAPI --> LinkHeader
+    LinkHeader --> SyncService
+    Webhook -->|Create/Update/Delete| SyncService
+
+    SyncService --> HTMLCleaner
+    HTMLCleaner --> HashCheck
+    
+    HashCheck -->|No Change| Postgres
+    HashCheck -->|New or Changed| OllamaService
+    
+    OllamaService --> Vector768
+    Vector768 --> IVFIndex
+    IVFIndex --> Postgres
+
+    SearchUI -->|User Query: 'áo khoác mùa đông'| QueryEmbed
+    QueryEmbed --> CosineCalc
+    CosineCalc --> IVFIndex
+    IVFIndex --> Top5
+    Top5 --> SearchUI
+```
+
+### Mô tả ngắn từng bước trong luồng:
+1. **Shopify:** Cửa hàng Shopify lưu trữ danh mục sản phẩm của Merchant.
+2. **Admin API:** App gửi request xác thực qua `X-Shopify-Access-Token` tới `/admin/api/2024-04/products.json`. Xử lý phân trang nhiều trang liên tiếp qua HTTP `Link` header (`rel="next"`).
+3. **Product Sync:** Bóc tách tiêu đề, làm sạch thẻ HTML trong mô tả, lấy giá biến thể đầu tiên, ảnh đại diện và tính mã băm `data_hash`. Đánh dấu `deleted_at = now()` cho các sản phẩm không còn tồn tại trên Shopify.
+4. **Database:** Lưu bản ghi sản phẩm vào bảng `products` trong PostgreSQL.
+5. **Embedding:** Ghép chuỗi văn bản đại diện và gửi tới container Ollama mô hình `nomic-embed-text`.
+6. **Vector Storage:** Lưu vector 768 chiều vào cột `embedding` và đánh chỉ mục `ivfflat`.
+7. **Semantic Search:** Khi người dùng tìm kiếm, câu truy vấn được chuyển thành vector $\rightarrow$ truy vấn khoảng cách cosine trong PostgreSQL $\rightarrow$ xếp hạng và trả về Top 5 kết quả sát nghĩa nhất.
+
+---
+
+## 8. Shopify Webhooks (Đồng bộ thời gian thực)
+
+Hệ thống tiếp nhận thay đổi sản phẩm từ Shopify theo thời gian thực:
+
+| Webhook Event | Endpoint | Xử lý |
 | :--- | :--- | :--- |
-| `products/create` | `POST /webhooks/products/create` | Lưu sản phẩm vào DB, tự động sinh vector embedding và lưu vào `pgvector`. |
-| `products/update` | `POST /webhooks/products/update` | Cập nhật dữ liệu, kiểm tra `data_hash` để chỉ tạo lại vector khi nội dung ngữ nghĩa thay đổi. |
-| `products/delete` | `POST /webhooks/products/delete` | Đánh dấu soft-delete `deleted_at = now()` và loại bỏ vector (`embedding = null`). |
+| `products/create` | `POST /webhooks/products/create` | Tạo mới sản phẩm trong DB, tự động gọi Ollama sinh vector 768 chiều. |
+| `products/update` | `POST /webhooks/products/update` | Cập nhật thông tin. Nếu `data_hash` không đổi (ví dụ chỉ đổi tồn kho), bỏ qua sinh vector. Nếu đổi nội dung, tự động tạo lại vector. |
+| `products/delete` | `POST /webhooks/products/delete` | Tự động đánh dấu soft-delete `deleted_at = now()` và xóa vector (`embedding = null`). |
 
-### Tính năng bảo mật & tối ưu Webhook:
-* **Xác thực chữ ký HMAC:** Middleware `VerifyShopifyWebhook` bóc tách header `X-Shopify-Hmac-Sha256`, tính toán lại chữ ký HMAC-SHA256 từ raw payload và dùng `hash_equals` đối soát nghiêm ngặt.
-* **Xử lý Idempotent (Chống trùng lặp):** Đọc header `X-Shopify-Webhook-Id` và lưu cache 24h. Nếu Shopify gửi lại webhook trùng lặp, hệ thống tự động nhận diện và trả về `200 OK` ngay lập tức mà không thực thi lại logic.
+* **Bảo mật HMAC:** Middleware `VerifyShopifyWebhook` tính toán SHA256 HMAC từ raw request body đối soát với `X-Shopify-Hmac-Sha256`.
+* **Tính lũy đẳng (Idempotency):** Đọc header `X-Shopify-Webhook-Id` và cache 24h, tự động bỏ qua nếu Shopify gửi trùng lặp webhook.
 
 ---
-
 
