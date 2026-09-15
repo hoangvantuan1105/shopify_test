@@ -12,8 +12,7 @@
 5. [Cơ sở dữ liệu & Lưu trữ Vector (Database & Vector Storage)](#5-cơ-sở-dữ-liệu--lưu-trữ-vector-database--vector-storage)
 6. [Mô hình Embedding (Embedding Model & Provider)](#6-mô-hình-embedding-embedding-model--provider)
 7. [Cơ chế Tìm kiếm Ngữ nghĩa (Vector Search / Semantic Search)](#7-cơ-chế-tìm-kiếm-ngữ-nghĩa-vector-search--semantic-search)
-8. [Kiểm thử tự động (Automated Testing)](#8-kiểm-thử-tự-động-automated-testing)
-9. [Trả lời 5 câu hỏi phỏng vấn kỹ thuật bắt buộc](#9-trả-lời-5-câu-hỏi-phỏng-vấn-kỹ-thuật-bắt-buộc)
+8. [Đồng bộ Webhook thời gian thực (Shopify Webhooks)](#8-đồng-bộ-webhook-thời-gian-thực-shopify-webhooks)
 
 ---
 
@@ -22,16 +21,45 @@
 ### Sơ đồ luồng dữ liệu (End-to-End Pipeline)
 
 ```mermaid
-flowchart LR
-    A[Shopify Store] -->|OAuth 2.0 / Admin API| B(Product Sync Service)
-    B -->|Link Header Pagination| C[(PostgreSQL Database)]
-    C -->|Extract Context & MD5 Hash| D(Embedding Service)
-    D -->|Ollama: nomic-embed-text| E[(pgvector Storage)]
-    
-    F[User Query] -->|Input text| G(Query Embedding)
-    G -->|Ollama 768-dim| H[pgvector Cosine Search]
-    E -.->|Index: ivfflat <=>| H
-    H -->|Rank Top 5 by Similarity| I[Web UI / REST API]
+flowchart TD
+    subgraph Shopify["Shopify Platform"]
+        Shop[Merchant Store]
+        Webhook[Shopify Webhooks]
+    end
+
+    subgraph App["Laravel Application"]
+        OAuth[ShopifyAuthController]
+        SyncService[ShopifyProductService]
+        WebhookController[ShopifyWebhookController]
+        EmbedService[EmbeddingService]
+        SearchController[SearchController]
+    end
+
+    subgraph Storage["PostgreSQL + pgvector"]
+        DB[(products & shops table)]
+        IVF[(ivfflat Vector Index)]
+    end
+
+    subgraph AI["Ollama AI Container"]
+        Ollama[nomic-embed-text 768-dim]
+    end
+
+    Shop -->|OAuth 2.0 Install| OAuth
+    OAuth -->|Save Token| DB
+    Shop -->|REST Admin API / Link Header| SyncService
+    Webhook -->|create / update / delete| WebhookController
+    SyncService -->|Upsert Products| DB
+    WebhookController -->|Upsert / Soft-delete| DB
+    DB -->|Extract Context + data_hash| EmbedService
+    EmbedService -->|HTTP Request| Ollama
+    Ollama -->|768-dim Vector| EmbedService
+    EmbedService -->|Store Embedding| IVF
+
+    User([User Search Query]) -->|GET /search?q=...| SearchController
+    SearchController -->|Embed Query| Ollama
+    Ollama -->|Query Vector| SearchController
+    SearchController -->|Cosine Distance <=> | IVF
+    IVF -->|Top 5 Results| SearchController
 ```
 
 ### Chi tiết các bước trong luồng:
@@ -147,6 +175,39 @@ Các biến môi trường bắt buộc cần khai báo trong file `.env`:
 ### Cơ sở dữ liệu được sử dụng:
 * **PostgreSQL 16** kết hợp extension **`pgvector`** (chạy từ Docker image chính thức `pgvector/pgvector:pg16`).
 
+### Cấu trúc bảng `products`:
+```sql
+CREATE TABLE products (
+    id BIGSERIAL PRIMARY KEY,
+    shopify_product_id BIGINT UNIQUE NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    vendor VARCHAR(255),
+    product_type VARCHAR(255),
+    tags TEXT,
+    variants JSONB,
+    price DECIMAL(10, 2),
+    image_url TEXT,
+    shopify_created_at TIMESTAMPTZ,
+    shopify_updated_at TIMESTAMPTZ,
+    synced_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,
+    data_hash VARCHAR(64),
+    embedding vector(768),
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+```
+
+### Cơ chế Indexing Vector:
+Để tăng tốc độ tìm kiếm vector gần đúng (Approximate Nearest Neighbors - ANN) trên tập dữ liệu lớn, bảng `products` được đánh chỉ mục **IVFFlat** sử dụng phép đo góc Cosine:
+```sql
+CREATE INDEX products_embedding_idx 
+ON products USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+```
+
+---
+
 ## 6. Mô hình Embedding (Embedding Model & Provider)
 
 * **Provider**: **Ollama** (Self-hosted chạy độc lập trong Docker container `shopify_ollama`).
@@ -193,6 +254,20 @@ Khi nhận được câu truy vấn từ Merchant:
   ```
 
 ---
+
+## 8. Đồng bộ Webhook thời gian thực (Shopify Webhooks)
+
+Ứng dụng cung cấp các endpoint webhook để tiếp nhận thay đổi sản phẩm theo thời gian thực từ Shopify:
+
+| Event | Endpoint | Xử lý |
+| :--- | :--- | :--- |
+| `products/create` | `POST /webhooks/products/create` | Lưu sản phẩm vào DB, tự động sinh vector embedding và lưu vào `pgvector`. |
+| `products/update` | `POST /webhooks/products/update` | Cập nhật dữ liệu, kiểm tra `data_hash` để chỉ tạo lại vector khi nội dung ngữ nghĩa thay đổi. |
+| `products/delete` | `POST /webhooks/products/delete` | Đánh dấu soft-delete `deleted_at = now()` và loại bỏ vector (`embedding = null`). |
+
+### Tính năng bảo mật & tối ưu Webhook:
+* **Xác thực chữ ký HMAC:** Middleware `VerifyShopifyWebhook` bóc tách header `X-Shopify-Hmac-Sha256`, tính toán lại chữ ký HMAC-SHA256 từ raw payload và dùng `hash_equals` đối soát nghiêm ngặt.
+* **Xử lý Idempotent (Chống trùng lặp):** Đọc header `X-Shopify-Webhook-Id` và lưu cache 24h. Nếu Shopify gửi lại webhook trùng lặp, hệ thống tự động nhận diện và trả về `200 OK` ngay lập tức mà không thực thi lại logic.
 
 ---
 
