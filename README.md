@@ -1,62 +1,199 @@
-<<<<<<< HEAD
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Shopify Product Synchronization & Vector Search (Semantic Search)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+> Dự án **Shopify App** hoàn chỉnh được xây dựng trên nền tảng **Laravel 12**, **PostgreSQL (pgvector)** và mô hình AI Embeddings cục bộ **Ollama (`nomic-embed-text`)**, đáp ứng đầy đủ yêu cầu bài test tuyển dụng Shopify App Developer của Công ty CP CNTT Minh Ngọc.
 
-## About Laravel
+---
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## 📑 Mục lục
+1. [Kiến trúc hệ thống (Architecture)](#1-kiến-trúc-hệ-thống-architecture)
+2. [Cài đặt dự án (Installation)](#2-cài-đặt-dự-án-installation)
+3. [Cấu hình môi trường (Configuration)](#3-cấu-hình-môi-trường-configuration)
+4. [Cấu hình Shopify App (Shopify Setup)](#4-cấu-hình-shopify-app-shopify-setup)
+5. [Cơ sở dữ liệu & Lưu trữ Vector (Database & Vector Storage)](#5-cơ-sở-dữ-liệu--lưu-trữ-vector-database--vector-storage)
+6. [Mô hình Embedding (Embedding Model & Provider)](#6-mô-hình-embedding-embedding-model--provider)
+7. [Cơ chế Tìm kiếm Ngữ nghĩa (Vector Search / Semantic Search)](#7-cơ-chế-tìm-kiếm-ngữ-nghĩa-vector-search--semantic-search)
+8. [Kiểm thử tự động (Automated Testing)](#8-kiểm-thử-tự-động-automated-testing)
+9. [Trả lời 5 câu hỏi phỏng vấn kỹ thuật bắt buộc](#9-trả-lời-5-câu-hỏi-phỏng-vấn-kỹ-thuật-bắt-buộc)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+---
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## 1. Kiến trúc hệ thống (Architecture)
 
-## Learning Laravel
+### Sơ đồ luồng dữ liệu (End-to-End Pipeline)
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```mermaid
+flowchart LR
+    A[Shopify Store] -->|OAuth 2.0 / Admin API| B(Product Sync Service)
+    B -->|Link Header Pagination| C[(PostgreSQL Database)]
+    C -->|Extract Context & MD5 Hash| D(Embedding Service)
+    D -->|Ollama: nomic-embed-text| E[(pgvector Storage)]
+    
+    F[User Query] -->|Input text| G(Query Embedding)
+    G -->|Ollama 768-dim| H[pgvector Cosine Search]
+    E -.->|Index: ivfflat <=>| H
+    H -->|Rank Top 5 by Similarity| I[Web UI / REST API]
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### Chi tiết các bước trong luồng:
+1. **Shopify OAuth 2.0**: Merchant cài đặt App vào Development Store, xác thực chữ ký HMAC và mã nonce `state` chống CSRF. Hệ thống cấp `access_token` và lưu vào bảng `shops`.
+2. **Admin API & Product Sync**:
+   * App gọi Shopify REST Admin API (`/admin/api/2024-04/products.json?limit=250`).
+   * Sử dụng **Cursor-based pagination qua HTTP `Link` header** (`rel="next"`) để lấy toàn bộ dữ liệu nhiều trang, không giới hạn số lượng.
+   * Xử lý sản phẩm bị xóa: các sản phẩm không còn tồn tại trên Shopify sẽ được đánh dấu `deleted_at = now()` và loại bỏ vector (`embedding = null`).
+3. **Data Representation & Hash Optimization**:
+   * Dữ liệu đại diện được chuẩn hóa: `Title | Description | Vendor | Product Type | Tags | Price`.
+   * Tính mã băm `data_hash = md5(...)`. Chỉ sinh lại vector khi `data_hash` thay đổi hoặc vector chưa có, giúp tối ưu chi phí và tốc độ.
+4. **Embedding Pipeline**:
+   * Gọi mô hình cục bộ `nomic-embed-text` qua Ollama API (`http://ollama:11434/api/embeddings`) để chuyển văn bản thành vector 768 chiều.
+5. **Vector Storage**:
+   * Lưu trữ trực tiếp trong PostgreSQL dưới kiểu dữ liệu `vector(768)`.
+   * Tối ưu truy vấn bằng chỉ mục `ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`.
+6. **Semantic Search**:
+   * Người dùng nhập từ khóa ngữ nghĩa (ví dụ: *"áo nam màu đen dưới 500k"*, *"dụng cụ trượt tuyết mùa đông"*).
+   * Chuyển truy vấn thành vector 768 chiều.
+   * Tính toán khoảng cách Cosine Distance (`<=>`) trực tiếp trong câu lệnh SQL:
+     $$\text{Similarity Score} = (1 - \text{Cosine Distance}) \times 100\%$$
+   * Trả về **Top 5 sản phẩm tương đồng nhất**, kèm ảnh, giá, tags và thời gian truy vấn (Query time ms).
 
-## Contributing
+---
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## 2. Cài đặt dự án (Installation)
 
-## Code of Conduct
+Dự án được đóng gói trọn vẹn thông qua **Docker Compose** (bao gồm PHP 8.3/Laravel 12, PostgreSQL 16 + pgvector, và Ollama).
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### Bước 1: Clone repository
+```bash
+git clone https://github.com/hoangvantuan1105/shopify_test.git
+cd shopify_test
+```
 
-## Security Vulnerabilities
+### Bước 2: Tạo file cấu hình môi trường
+```bash
+cp .env.example .env
+```
+*(Chỉnh sửa các biến `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL` trong file `.env` theo thông tin App của bạn).*
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### Bước 3: Khởi chạy Docker Containers
+```bash
+docker compose up -d --build
+```
+Kiểm tra 3 container đang chạy ổn định:
+* `shopify_app`: Laravel application (Port `8000`)
+* `shopify_db`: PostgreSQL với pgvector (Port `5432`)
+* `shopify_ollama`: Ollama server (Port `11434`)
 
-## License
+### Bước 4: Chạy Migration cơ sở dữ liệu
+```bash
+docker compose exec app php artisan migrate
+```
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
-=======
-# shopify_test
->>>>>>> 26b8847e89d6cefa79c3a6ad09c9d6048385850d
+### Bước 5: Tải mô hình Embedding vào Ollama
+```bash
+docker compose exec ollama ollama pull nomic-embed-text
+```
+
+### Bước 6: Truy cập ứng dụng
+* Giao diện Quản lý sản phẩm & Sync: `http://localhost:8000/products`
+* Giao diện Semantic Search: `http://localhost:8000/search`
+
+---
+
+## 3. Cấu hình môi trường (Configuration)
+
+Các biến môi trường bắt buộc cần khai báo trong file `.env`:
+
+| Biến môi trường | Giá trị mẫu / Mô tả |
+| :--- | :--- |
+| `APP_URL` | `http://localhost:8000` |
+| `DB_CONNECTION` | `pgsql` |
+| `DB_HOST` | `db` (tên service trong Docker) |
+| `DB_PORT` | `5432` |
+| `DB_DATABASE` | `shopify_vector_search` |
+| `DB_USERNAME` | `postgres` |
+| `DB_PASSWORD` | `secret` |
+| `SHOPIFY_API_KEY` | API Key lấy từ Shopify Partners Dashboard |
+| `SHOPIFY_API_SECRET` | API Secret Key từ Shopify Partners Dashboard |
+| `SHOPIFY_APP_URL` | Domain public (Ngrok URL, ví dụ: `https://your-ngrok.ngrok-free.dev`) |
+| `SHOPIFY_SCOPES` | `read_products` (Least-Privilege) |
+| `SHOPIFY_API_VERSION` | `2024-04` |
+| `EMBEDDING_PROVIDER` | `ollama` |
+| `OLLAMA_BASE_URL` | `http://ollama:11434` |
+| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` |
+
+---
+
+## 4. Cấu hình Shopify App (Shopify Setup)
+
+1. Đăng nhập vào [Shopify Partners Dashboard](https://partners.shopify.com/) và vào mục **Apps** > **Create App**.
+2. Chọn **Create app manually**, đặt tên cho ứng dụng (ví dụ: `Product Vector Search`).
+3. Trong mục **App setup**:
+   * **App URL**: Điền URL Ngrok trỏ về port 8000 (ví dụ: `https://your-domain.ngrok-free.dev`).
+   * **Allowed redirection URL(s)**:
+     ```
+     https://your-domain.ngrok-free.dev/auth/callback
+     ```
+4. Lưu cấu hình và sao chép **Client ID** và **Client Secret** vào file `.env` (`SHOPIFY_API_KEY` và `SHOPIFY_API_SECRET`).
+5. **Cài đặt vào Development Store**:
+   Truy cập trình duyệt theo định dạng:
+   ```
+   http://localhost:8000/auth?shop=your-development-store.myshopify.com
+   ```
+   Hệ thống sẽ chuyển hướng sang trang OAuth của Shopify để Merchant xác nhận cấp quyền `read_products`. Sau khi duyệt, Merchant được chuyển về màn hình quản lý `/products`.
+
+---
+
+## 5. Cơ sở dữ liệu & Lưu trữ Vector (Database & Vector Storage)
+
+### Cơ sở dữ liệu được sử dụng:
+* **PostgreSQL 16** kết hợp extension **`pgvector`** (chạy từ Docker image chính thức `pgvector/pgvector:pg16`).
+
+## 6. Mô hình Embedding (Embedding Model & Provider)
+
+* **Provider**: **Ollama** (Self-hosted chạy độc lập trong Docker container `shopify_ollama`).
+  * *Lý do lựa chọn*: Hoàn toàn miễn phí, bảo mật nội bộ dữ liệu sản phẩm, không lo bị nghẽn rate-limit hoặc hết quota như các dịch vụ thương mại ngoài.
+* **Mô hình**: **`nomic-embed-text`** (768 chiều).
+  * *Ưu điểm*: Được huấn luyện chuyên sâu cho tác vụ Information Retrieval (Semantic Search), hiệu năng vượt trội, kích thước nhẹ (~274MB) và thời gian sinh vector chỉ từ 10-30ms/sản phẩm.
+* **Chuỗi văn bản đại diện ngữ nghĩa (Context Construction)**:
+  ```
+  {Title} | {Description} | Nhà sản xuất: {Vendor} | Thể loại: {Product Type} | Phân loại: {Tags} | Giá: {Price}$
+  ```
+* **Artisan Command hỗ trợ:**
+  ```bash
+  # Vector hóa các sản phẩm mới hoặc có dữ liệu thay đổi
+  docker compose exec app php artisan products:embed
+
+  # Buộc tạo lại vector cho toàn bộ sản phẩm
+  docker compose exec app php artisan products:embed --force
+  ```
+
+---
+
+## 7. Cơ chế Tìm kiếm Ngữ nghĩa (Vector Search / Semantic Search)
+
+### Thuật toán tìm kiếm:
+Khi nhận được câu truy vấn từ Merchant:
+1. Hệ thống chuyển đổi câu truy vấn thành vector 768 chiều thông qua Ollama.
+2. Thực thi truy vấn SQL với toán tử khoảng cách cosine `<=>`:
+   ```sql
+   SELECT id, shopify_product_id, title, price, image_url, vendor,
+          (1 - (embedding <=> :query_vector::vector)) AS similarity
+   FROM products
+   WHERE deleted_at IS NULL
+     AND embedding IS NOT NULL
+   ORDER BY embedding <=> :query_vector::vector ASC
+   LIMIT 5;
+   ```
+3. Kết quả trả về gồm **Top 5 sản phẩm có độ tương đồng ngữ nghĩa cao nhất** kèm thời gian xử lý (Query Time tính bằng mili-giây).
+
+### Giao diện và API:
+* **Giao diện Web**: Truy cập `http://localhost:8000/search`
+* **JSON REST API**:
+  ```bash
+  curl -H "Accept: application/json" "http://localhost:8000/search?q=snowboard+winter"
+  ```
+
+---
+
+---
+
+
