@@ -14,6 +14,7 @@
 7. [Architecture (Mô tả luồng dữ liệu Shopify → Semantic Search)](#7-architecture-mô-tả-luồng-dữ-liệu-shopify--semantic-search)
 8. [Shopify Webhooks (Đồng bộ thời gian thực)](#8-shopify-webhooks-đồng-bộ-thời-gian-thực)
 
+
 ---
 
 ## 1. Installation (Cách cài đặt project)
@@ -290,4 +291,3 @@ Hệ thống tiếp nhận thay đổi sản phẩm từ Shopify theo thời gia
 * **Tính lũy đẳng (Idempotency):** Đọc header `X-Shopify-Webhook-Id` và cache 24h, tự động bỏ qua nếu Shopify gửi trùng lặp webhook.
 
 ---
-
