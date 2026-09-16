@@ -65,7 +65,8 @@ class EmbeddingService
     public function embed(string $text): array
     {
         if ($this->provider === 'ollama') {
-            $response = Http::timeout(60)->post("{$this->baseUrl}/api/embeddings", [
+            // Retry mechanism: Thử lại tối đa 3 lần nếu container Ollama đang tải mô hình hoặc quá tải tạm thời
+            $response = Http::retry(3, 500)->timeout(60)->post("{$this->baseUrl}/api/embeddings", [
                 'model'  => $this->model,
                 'prompt' => $text,
             ]);

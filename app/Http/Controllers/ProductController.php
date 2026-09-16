@@ -62,6 +62,21 @@ class ProductController extends Controller
             return redirect()->route('products.index')->with('error', 'Chưa có store nào được kết nối. Vui lòng kết nối store trước qua /auth');
         }
 
+        // Nếu yêu cầu chạy ngầm qua Background Queue
+        if ($request->boolean('async')) {
+            \App\Jobs\SyncProductsJob::dispatch($shop);
+            $msg = "Đã đưa tiến trình đồng bộ vào Background Queue Job. Hệ thống sẽ xử lý ngầm!";
+
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'status'  => 'queued',
+                    'message' => $msg,
+                ]);
+            }
+
+            return redirect()->route('products.index', ['shop' => $shop->shop_domain])->with('success', $msg);
+        }
+
         try {
             $result = $service->syncProducts($shop);
 

@@ -28,10 +28,45 @@ class ShopifyProductService
         do {
             Log::info("Đang đồng bộ trang {$page} từ shop {$shop->shop_domain}...");
 
-            $response = Http::withHeaders([
+            // 1. Retry mechanism: Tự động thử lại 3 lần nếu mạng lag hoặc dính lỗi 429/5xx
+            $response = Http::retry(3, 500, function ($exception, $request) {
+                if ($exception instanceof \Illuminate\Http\Client\RequestException) {
+                    $status = $exception->response?->status();
+                    return $status === 429 || $status >= 500;
+                }
+                return true;
+            }, throw: false)->withHeaders([
                 'X-Shopify-Access-Token' => $shop->access_token,
                 'Content-Type'           => 'application/json',
             ])->timeout(30)->get($url);
+
+            // 2. Rate-limit handling: Đọc header X-Shopify-Shop-Api-Call-Limit (ví dụ: 36/40)
+            $callLimitHeader = $response->header('X-Shopify-Shop-Api-Call-Limit');
+            if ($callLimitHeader && str_contains($callLimitHeader, '/')) {
+                [$callsUsed, $callLimit] = explode('/', $callLimitHeader);
+                $used = (int) trim($callsUsed);
+                $limit = (int) trim($callLimit);
+                Log::info("Shopify Rate Limit: {$used}/{$limit} requests đã dùng.");
+
+                // Nếu số request đã dùng >= 35/40 (gần chạm trần), chủ động tạm dừng 0.5s để xô Leaky Bucket xả bớt
+                if ($used >= ($limit - 5)) {
+                    Log::warning("Gần chạm ngưỡng Rate-limit ({$used}/{$limit}), tạm dừng 500ms để làm rỗng xô Leaky Bucket...");
+                    usleep(500000); // 500ms
+                }
+            }
+
+            // 3. Xử lý khi bị lỗi 429 Too Many Requests: Đọc header Retry-After và sleep đúng số giây
+            if ($response->status() === 429) {
+                $retryAfter = (int) ($response->header('Retry-After') ?: 2);
+                Log::warning("Bị Shopify phản hồi 429 Too Many Requests. Tạm nghỉ {$retryAfter}s theo header Retry-After...");
+                sleep($retryAfter);
+
+                // Thử lại request sau khi đã nghỉ đủ thời gian
+                $response = Http::withHeaders([
+                    'X-Shopify-Access-Token' => $shop->access_token,
+                    'Content-Type'           => 'application/json',
+                ])->timeout(30)->get($url);
+            }
 
             if (!$response->successful()) {
                 Log::error("Lỗi khi gọi Shopify Products API: " . $response->body());

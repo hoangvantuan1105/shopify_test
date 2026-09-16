@@ -90,7 +90,6 @@ class ShopifyWebhookController extends Controller
 
     /**
      * Webhook xử lý Product Updated: cập nhật Product, tạo lại embedding khi cần và cập nhật vector.
-     * Tối ưu Mục 6: Không tạo lại embedding nếu nội dung ngữ nghĩa không đổi (data_hash trùng khớp).
      */
     public function handleProductUpdated(Request $request, EmbeddingService $embeddingService): JsonResponse
     {
@@ -122,7 +121,7 @@ class ShopifyWebhookController extends Controller
                 $message = 'Product updated (embedding skipped: unchanged data_hash)';
             }
         } else {
-            // Trường hợp sản phẩm chưa có trong DB
+  
             $product = Product::create($data);
             try {
                 $embeddingService->embedProduct($product);
@@ -140,7 +139,6 @@ class ShopifyWebhookController extends Controller
     }
 
     /**
-     * Webhook xử lý Product Deleted: đánh dấu xóa Product và loại bỏ vector tương ứng.
      */
     public function handleProductDeleted(Request $request): JsonResponse
     {

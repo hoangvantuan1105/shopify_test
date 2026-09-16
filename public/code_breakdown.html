@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="vi" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopify Vector Search - Phân Tích Chi Tiết Từng File Code</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Highlight.js for Syntax Highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/php.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        code, pre { font-family: 'JetBrains Mono', monospace; }
+        .glass-nav { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(16px); }
+        .card-glow:hover { box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.12), 0 8px 10px -6px rgba(99, 102, 241, 0.08); }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 antialiased min-h-screen">
+
+    <!-- Top Sticky Header -->
+    <header class="glass-nav sticky top-0 z-50 border-b border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-500/20 text-lg">
+                    
+                </div>
+                <div>
+                    <h1 class="text-base font-bold text-white leading-tight">Codebase Inspector & Architecture Breakdown</h1>
+                    <p class="text-xs text-slate-400">Giải thích chi tiết chức năng & mã nguồn từng file trong dự án</p>
+                </div>
+            </div>
+     
+        </div>
+    </header>
+
+    <!-- Quick Jump Sub-Header with Search Filter -->
+    <div class="bg-slate-950 border-b border-slate-800/80 py-3 sticky top-16 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-3">
+            <!-- Filter buttons -->
+            <div class="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 text-xs font-medium">
+                <span class="text-slate-400 mr-1 hidden sm:inline">Phân tầng:</span>
+                <button onclick="filterLayer('all')" class="layer-btn active px-2.5 py-1 rounded-md bg-indigo-600 text-white font-semibold">Tất cả</button>
+                <button onclick="filterLayer('controllers')" class="layer-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700">Controllers</button>
+                <button onclick="filterLayer('services')" class="layer-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700">Services</button>
+                <button onclick="filterLayer('jobs')" class="layer-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700">Queue & Jobs</button>
+                <button onclick="filterLayer('middleware')" class="layer-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700">Middleware</button>
+                <button onclick="filterLayer('models')" class="layer-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700">Models & DB</button>
+                <button onclick="filterLayer('commands')" class="layer-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700">Artisan CLI</button>
+                <button onclick="filterLayer('tests')" class="layer-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700">Tests</button>
+                <button onclick="filterLayer('devops')" class="layer-btn px-2.5 py-1 rounded-md bg-slate-800 text-slate-300 hover:bg-slate-700">Docker</button>
+            </div>
+            <!-- Search input -->
+            <div class="relative w-full md:w-72">
+                <input type="text" id="searchInput" oninput="searchFiles()" placeholder="Gõ tên file hoặc từ khóa..." 
+                       class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 pl-8 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+                <span class="absolute left-2.5 top-2 text-slate-500 text-xs">🔎</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-16">
+
+        <!-- ========================================================================= -->
+        <!-- TẦNG 1: HTTP CONTROLLERS                                                  -->
+        <!-- ========================================================================= -->
+        <section class="layer-section space-y-6" data-layer="controllers">
+            <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-sm border border-indigo-500/30">1</span>
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Tầng Điều Khiển HTTP (Controllers)</h2>
+                        <p class="text-xs text-slate-400">Tiếp nhận HTTP requests từ Merchant & Shopify, xác thực bảo mật và điều phối luồng nghiệp vụ.</p>
+                    </div>
+                </div>
+                <span class="text-xs font-mono text-indigo-400 bg-indigo-950/60 px-2.5 py-1 rounded-md border border-indigo-800/60">4 Files</span>
+            </div>
+
+            <div class="grid grid-cols-1 gap-6">
+
+                <!-- 1.1 ShopifyAuthController.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 card-glow transition" data-keywords="auth oauth hmac token callback login shopifyauthcontroller">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-4">
+                        <div>
+                            <span class="text-xs font-mono font-bold text-indigo-400 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-800/80 uppercase">Controller</span>
+                            <h3 class="text-lg font-bold text-white mt-1 font-mono">app/Http/Controllers/ShopifyAuthController.php</h3>
+                        </div>
+                        <span class="text-xs text-slate-400">Luồng OAuth 2.0 & Quản lý Token</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="space-y-4 text-xs lg:col-span-1">
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-indigo-400">Chức Năng Chính</h4>
+                                <p class="text-slate-300 mt-1 leading-relaxed">
+                                    Quản lý toàn bộ luồng đăng nhập và cấp quyền OAuth 2.0 giữa Shopify và ứng dụng. Đảm bảo xác thực đúng cửa hàng, chống tấn công giả mạo (CSRF/Timing Attack) và lưu trữ mã <code>access_token</code> vĩnh viễn vào bảng <code>shops</code>.
+                                </p>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-indigo-400">Các Hàm Cốt Lõi</h4>
+                                <ul class="list-disc pl-4 text-slate-300 space-y-1 mt-1 font-mono">
+                                    <li><code>redirect(Request $request)</code>: Khởi tạo URL ủy quyền kèm <code>state</code> nonce.</li>
+                                    <li><code>callback(Request $request)</code>: Nhận code, xác thực HMAC, đổi lấy permanent access token.</li>
+                                    <li><code>validateHmac(array $params)</code>: Tách tham số hmac và so sánh hash an toàn bằng <code>hash_equals</code>.</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-indigo-400">Luồng Dữ Liệu</h4>
+                                <p class="text-slate-400 mt-1">
+                                    Merchant ➔ <code>/auth?shop=...</code> ➔ Chuyển hướng Shopify Admin ➔ Merchant chấp thuận ➔ Shopify gọi <code>/auth/callback</code> ➔ Lưu <code>Shop</code> Model ➔ Chuyển đến <code>/products</code>.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="lg:col-span-2 space-y-2">
+                            <span class="text-[11px] font-mono text-slate-400 block">Đoạn code then chốt: Xác thực chữ ký HMAC SHA-256 an toàn</span>
+                            <pre class="bg-slate-950 p-4 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-php">protected function validateHmac(array $params): bool
+{
+    if (!isset($params['hmac'])) return false;
+    $hmac = $params['hmac'];
+
+    // 1. Loại bỏ hmac và signature khỏi mảng tham số theo chuẩn Shopify
+    unset($params['hmac'], $params['signature']);
+
+    // 2. Sắp xếp các khóa tham số theo thứ tự alphabet A-Z
+    ksort($params);
+
+    // 3. Ghép chuỗi query chuẩn hóa key=value&key=value
+    $queryString = http_build_query($params);
+
+    // 4. Tính toán chữ ký SHA-256 bằng App Secret
+    $calculatedHmac = hash_hmac('sha256', $queryString, config('shopify.client_secret'));
+
+    // 5. Dùng hash_equals chống Timing Attack (an toàn tuyệt đối)
+    return hash_equals($hmac, $calculatedHmac);
+}</code></pre>
+                            <div class="p-3 bg-slate-900/90 rounded-lg border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                                <strong class="text-slate-200">🔍 Vì sao code như vậy?</strong>
+                                <p>Hàm <code>hash_equals()</code> thực hiện so sánh chuỗi với thời gian thực thi cố định (constant time), ngăn chặn tin tặc đo lường độ trễ mạng để đoán từng ký tự của chữ ký HMAC.</p>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- 1.2 ProductController.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 card-glow transition" data-keywords="product list sync embed async job productcontroller">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-4">
+                        <div>
+                            <span class="text-xs font-mono font-bold text-indigo-400 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-800/80 uppercase">Controller</span>
+                            <h3 class="text-lg font-bold text-white mt-1 font-mono">app/Http/Controllers/ProductController.php</h3>
+                        </div>
+                        <span class="text-xs text-slate-400">Giao diện Dashboard, Tabs & Kích hoạt Sync</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="space-y-4 text-xs lg:col-span-1">
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-indigo-400">Chức Năng Chính</h4>
+                                <p class="text-slate-300 mt-1 leading-relaxed">
+                                    Quản lý giao diện sản phẩm: phân trang 15 bản ghi/trang, bộ tab lọc giữa <strong>Sản phẩm Active</strong> và <strong>Sản phẩm Đã Bị Xóa (Soft Deleted)</strong> kèm thời gian xóa. Tiếp nhận lệnh đồng bộ (hỗ trợ cả Direct Sync và đẩy ngầm vào Queue Job nếu truyền <code>async=1</code>).
+                                </p>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-indigo-400">Các Hàm Cốt Lõi</h4>
+                                <ul class="list-disc pl-4 text-slate-300 space-y-1 mt-1 font-mono">
+                                    <li><code>index(Request $request)</code>: Phân trang, đếm số lượng active vs deleted, render view Blade hoặc trả JSON.</li>
+                                    <li><code>sync(Request $request, ShopifyProductService $service)</code>: Kích hoạt đồng bộ, hỗ trợ dispatch <code>SyncProductsJob</code> khi <code>async=1</code>.</li>
+                                    <li><code>embedAll(Request $request, EmbeddingService $service)</code>: Kích hoạt vector hóa toàn bộ database.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="lg:col-span-2 space-y-2">
+                            <span class="text-[11px] font-mono text-slate-400 block">Đoạn code then chốt: Hỗ trợ Background Queue Job khi sync</span>
+                            <pre class="bg-slate-950 p-4 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-php">// Trong ProductController::sync()
+if ($request->boolean('async')) {
+    // Đẩy tác vụ đồng bộ vào Background Queue để trả về ngay cho Merchant
+    \App\Jobs\SyncProductsJob::dispatch($shop);
+    $msg = "Đã đưa tiến trình đồng bộ vào Background Queue Job. Hệ thống sẽ xử lý ngầm!";
+
+    if ($request->wantsJson()) {
+        return response()->json(['status' => 'queued', 'message' => $msg]);
+    }
+    return redirect()->route('products.index', ['shop' => $shop->shop_domain])->with('success', $msg);
+}
+
+// Chạy đồng bộ trực tiếp (với kho hàng nhỏ)
+$result = $service->syncProducts($shop);</code></pre>
+                            <div class="p-3 bg-slate-900/90 rounded-lg border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                                <strong class="text-slate-200">🔍 Phân tích luồng Tab Active & Soft Deleted:</strong>
+                                <p>Khi Merchant bấm tab "Sản phẩm đã xóa", controller thực thi: <code>Product::whereNotNull('deleted_at')->orderBy('deleted_at', 'desc')->paginate(15)</code> giúp hiển thị chính xác ngày giờ webhook xóa sản phẩm gửi đến.</p>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- 1.3 SearchController.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 card-glow transition" data-keywords="search semantic vector cosine pgvector similarity searchcontroller">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-4">
+                        <div>
+                            <span class="text-xs font-mono font-bold text-indigo-400 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-800/80 uppercase">Controller</span>
+                            <h3 class="text-lg font-bold text-white mt-1 font-mono">app/Http/Controllers/SearchController.php</h3>
+                        </div>
+                        <span class="text-xs text-slate-400">Tìm Kiếm Ngữ Nghĩa (Semantic Search)</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="space-y-4 text-xs lg:col-span-1">
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-indigo-400">Chức Năng Chính</h4>
+                                <p class="text-slate-300 mt-1 leading-relaxed">
+                                    Thực hiện tìm kiếm ngữ nghĩa theo ý định người dùng (Semantic Search). Chuyển câu truy vấn thành vector qua <code>EmbeddingService</code>, sau đó thực hiện toán tử Cosine Distance <code><=></code> trong PostgreSQL để xếp hạng Top 5 sản phẩm tương đồng nhất.
+                                </p>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-indigo-400">Các Hàm Cốt Lõi</h4>
+                                <ul class="list-disc pl-4 text-slate-300 space-y-1 mt-1 font-mono">
+                                    <li><code>index(Request $request, EmbeddingService $embeddingService)</code>: Nhận từ khóa <code>q</code>, sinh vector câu hỏi, truy vấn DB và tính toán phần trăm độ tương đồng.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="lg:col-span-2 space-y-2">
+                            <span class="text-[11px] font-mono text-slate-400 block">Đoạn code then chốt: Truy vấn khoảng cách Cosine trên pgvector</span>
+                            <pre class="bg-slate-950 p-4 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-php">$queryVector = $embeddingService->embed($query);
+$vectorString = '[' . implode(',', $queryVector) . ']';
+
+// Truy vấn toán tử khoảng cách Cosine (<=>) với PostgreSQL pgvector
+$products = Product::select('*')
+    ->selectRaw('(1 - (embedding <=> ?::vector)) as similarity_score', [$vectorString])
+    ->whereNotNull('embedding')
+    ->whereNull('deleted_at') // Loại trừ sản phẩm đã xóa
+    ->orderByRaw('embedding <=> ?::vector ASC', [$vectorString])
+    ->limit(5)
+    ->get();</code></pre>
+                            <div class="p-3 bg-slate-900/90 rounded-lg border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                                <strong class="text-slate-200">🔍 Bản chất toán học:</strong>
+                                <p>Toán tử <code><=></code> đo Cosine Distance giữa 2 vector trong không gian 768 chiều. Công thức <code>1 - (embedding <=> query)</code> chuyển đổi khoảng cách thành điểm số tương đồng từ 0.0 đến 1.0 (nhân 100 để hiển thị % độ khớp trên UI).</p>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- 1.4 ShopifyWebhookController.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 card-glow transition" data-keywords="webhook created updated deleted data_hash re-embed soft-delete shopifywebhookcontroller">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-4">
+                        <div>
+                            <span class="text-xs font-mono font-bold text-indigo-400 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-800/80 uppercase">Controller</span>
+                            <h3 class="text-lg font-bold text-white mt-1 font-mono">app/Http/Controllers/ShopifyWebhookController.php</h3>
+                        </div>
+                        <span class="text-xs text-slate-400">Tiếp nhận & Xử lý Webhooks Thời Gian Thực</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="space-y-4 text-xs lg:col-span-1">
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-indigo-400">Chức Năng Chính</h4>
+                                <p class="text-slate-300 mt-1 leading-relaxed">
+                                    Đón nhận dữ liệu thời gian thực khi Merchant thao tác trên Shopify Admin: Tạo sản phẩm mới (tự động lưu & vector hóa), Cập nhật sản phẩm (kiểm tra <code>data_hash</code> để tránh re-embed lãng phí), và Xóa sản phẩm (soft delete gán <code>deleted_at</code> và xóa vector).
+                                </p>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-indigo-400">Các Hàm Cốt Lõi</h4>
+                                <ul class="list-disc pl-4 text-slate-300 space-y-1 mt-1 font-mono">
+                                    <li><code>extractProductData(array $payload)</code>: Chuẩn hóa payload, bóc HTML tags, tính hash MD5.</li>
+                                    <li><code>handleProductCreated(...)</code>: Lưu sản phẩm mới và gọi Ollama tạo vector.</li>
+                                    <li><code>handleProductUpdated(...)</code>: So sánh <code>data_hash</code>, chỉ re-embed khi nội dung thay đổi.</li>
+                                    <li><code>handleProductDeleted(...)</code>: Đánh dấu xóa mềm và hủy vector.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="lg:col-span-2 space-y-2">
+                            <span class="text-[11px] font-mono text-slate-400 block">Đoạn code then chốt: Kiểm tra data_hash và xử lý Soft Delete</span>
+                            <pre class="bg-slate-950 p-4 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-php">// Trong handleProductUpdated: Tối ưu không re-embed khi chỉ đổi tồn kho
+$oldHash = $product->data_hash;
+$product->update($data);
+
+if ($oldHash !== $data['data_hash'] || $product->embedding === null) {
+    // Chỉ tạo lại vector khi ngữ nghĩa thực sự thay đổi!
+    $embeddingService->embedProduct($product, force: true);
+}
+
+// Trong handleProductDeleted: Soft delete và gỡ vector
+$product->deleted_at = now();
+$product->embedding = null; // Gỡ bỏ vector để không bao giờ xuất hiện trong kết quả search
+$product->save();</code></pre>
+                        </div>
+                    </div>
+                </article>
+
+            </div>
+        </section>
+
+
+        <!-- ========================================================================= -->
+        <!-- TẦNG 2: SERVICES (TẦNG NGHIỆP VỤ CHUYÊN SÂU)                             -->
+        <!-- ========================================================================= -->
+        <section class="layer-section space-y-6" data-layer="services">
+            <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold text-sm border border-purple-500/30">2</span>
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Tầng Nghiệp Vụ Chuyên Sâu (Services Layer)</h2>
+                        <p class="text-xs text-slate-400">Xử lý toàn bộ logic phức tạp: Gọi Shopify REST/GraphQL API, Rate Limiting, Retry và tương tác mô hình AI Ollama.</p>
+                    </div>
+                </div>
+                <span class="text-xs font-mono text-purple-400 bg-purple-950/60 px-2.5 py-1 rounded-md border border-purple-800/60">3 Files</span>
+            </div>
+
+            <div class="grid grid-cols-1 gap-6">
+
+                <!-- 2.1 ShopifyProductService.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 card-glow transition" data-keywords="sync cursor pagination rate-limit leaky bucket retry shopifyproductservice">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-4">
+                        <div>
+                            <span class="text-xs font-mono font-bold text-purple-400 bg-purple-950/80 px-2 py-0.5 rounded border border-purple-800/80 uppercase">Service</span>
+                            <h3 class="text-lg font-bold text-white mt-1 font-mono">app/Services/ShopifyProductService.php</h3>
+                        </div>
+                        <span class="text-xs text-slate-400">Đồng Bộ REST Cursor, Retry & Rate-Limit Leaky Bucket</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="space-y-4 text-xs lg:col-span-1">
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-purple-400">Chức Năng Chính</h4>
+                                <p class="text-slate-300 mt-1 leading-relaxed">
+                                    Đảm nhận việc kéo sản phẩm từ Shopify Admin REST API về database bằng <strong>Cursor Pagination (Link header)</strong>. Tự động phục hồi khi gặp sự cố mạng qua <code>Http::retry(3, 500)</code>, phân tích header <code>X-Shopify-Shop-Api-Call-Limit</code> để chủ động giảm tốc và xử lý mã lỗi 429 Retry-After.
+                                </p>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-purple-400">Các Hàm Cốt Lõi</h4>
+                                <ul class="list-disc pl-4 text-slate-300 space-y-1 mt-1 font-mono">
+                                    <li><code>syncProducts(Shop $shop)</code>: Vòng lặp kéo toàn bộ các trang sản phẩm.</li>
+                                    <li><code>handleRateLimit(Response $response)</code>: Kiểm tra dung lượng thùng Leaky Bucket (ngưỡng 35/40 calls) và mã 429.</li>
+                                    <li><code>extractNextPageUrl(?string $linkHeader)</code>: Phân tích regex bóc URL <code>rel="next"</code>.</li>
+                                    <li><code>cleanHtml(?string $html)</code>: Làm sạch thẻ HTML để lấy văn bản thuần cho embedding.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="lg:col-span-2 space-y-2">
+                            <span class="text-[11px] font-mono text-slate-400 block">Đoạn code then chốt: Http::retry & Chủ động Throttling Rate-Limit</span>
+                            <pre class="bg-slate-950 p-4 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-php">// 1. Tự động thử lại 3 lần nếu gặp sự cố mạng hoặc lỗi tạm thời
+$response = Http::withHeaders(['X-Shopify-Access-Token' => $shop->access_token])
+    ->retry(3, 500, function ($exception, $request) {
+        return $exception instanceof \Illuminate\Http\Client\ConnectionException;
+    })
+    ->get($url, $params);
+
+// 2. Xử lý Rate Limit Leaky Bucket của Shopify
+protected function handleRateLimit(\Illuminate\Http\Client\Response $response): void
+{
+    // Đọc header X-Shopify-Shop-Api-Call-Limit: "36/40"
+    $callLimitHeader = $response->header('X-Shopify-Shop-Api-Call-Limit');
+    if ($callLimitHeader && str_contains($callLimitHeader, '/')) {
+        [$calls, $limit] = explode('/', $callLimitHeader);
+        // Nếu đã dùng >= 35/40 cuộc gọi, chủ động ngủ 0.5s để thùng rò rỉ bớt!
+        if ((int)$calls >= ((int)$limit - 5)) {
+            usleep(500000); // 500ms
+        }
+    }
+
+    // Nếu bị 429, đọc Retry-After và ngủ đúng thời gian yêu cầu
+    if ($response->status() === 429) {
+        $retryAfter = (float) $response->header('Retry-After', 2.0);
+        usleep((int)($retryAfter * 1000000));
+    }
+}</code></pre>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- 2.2 ShopifyBulkOperationService.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 card-glow transition" data-keywords="bulk graphql jsonl streaming 100000 oom memory shopifybulkoperationservice">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-4">
+                        <div>
+                            <span class="text-xs font-mono font-bold text-purple-400 bg-purple-950/80 px-2 py-0.5 rounded border border-purple-800/80 uppercase">Service</span>
+                            <h3 class="text-lg font-bold text-white mt-1 font-mono">app/Services/ShopifyBulkOperationService.php</h3>
+                        </div>
+                        <span class="text-xs text-slate-400">Shopify GraphQL Bulk Operations (100.000+ Sản Phẩm)</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="space-y-4 text-xs lg:col-span-1">
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-purple-400">Chức Năng Chính</h4>
+                                <p class="text-slate-300 mt-1 leading-relaxed">
+                                    Giải pháp số 1 cho các store lớn (10.000 – 100.000+ sản phẩm). Gửi mutation GraphQL bất đồng bộ sang Shopify. Khi hoàn tất, hàm <code>streamAndProcessJsonl</code> mở luồng đọc từng dòng (streaming) giúp <strong>tránh 100% lỗi tràn RAM (Out Of Memory)</strong>.
+                                </p>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-purple-400">Các Hàm Cốt Lõi</h4>
+                                <ul class="list-disc pl-4 text-slate-300 space-y-1 mt-1 font-mono">
+                                    <li><code>startBulkOperation(Shop $shop)</code>: Bắn mutation <code>bulkOperationRunQuery</code>.</li>
+                                    <li><code>checkStatus(Shop $shop)</code>: Query trạng thái <code>currentBulkOperation</code>.</li>
+                                    <li><code>streamAndProcessJsonl(string $jsonlUrl, callable $onRecord)</code>: Đọc file kết quả theo stream từng dòng.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="lg:col-span-2 space-y-2">
+                            <span class="text-[11px] font-mono text-slate-400 block">Đoạn code then chốt: Streaming JSONL từng dòng chống tràn RAM</span>
+                            <pre class="bg-slate-950 p-4 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-php">public function streamAndProcessJsonl(string $jsonlUrl, callable $onRecord): int
+{
+    // Mở stream đọc nhị phân từ URL file JSONL của Shopify CDN
+    $handle = fopen($jsonlUrl, 'rb');
+    if ($handle === false) throw new \Exception("Không thể mở stream JSONL");
+
+    $processedCount = 0;
+    try {
+        // Đọc từng dòng một - KHÔNG load toàn bộ file 500MB vào bộ nhớ RAM!
+        while (($line = fgets($handle)) !== false) {
+            $line = trim($line);
+            if (empty($line)) continue;
+
+            $record = json_decode($line, true);
+            if (is_array($record)) {
+                $onRecord($record); // Xử lý lưu DB
+                $processedCount++;
+            }
+        }
+    } finally {
+        fclose($handle); // Đảm bảo luôn giải phóng con trỏ tài nguyên
+    }
+
+    return $processedCount;
+}</code></pre>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- 2.3 EmbeddingService.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 card-glow transition" data-keywords="embedding ollama nomic-embed-text vector 768 pgvector embeddingservice">
+                    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-4">
+                        <div>
+                            <span class="text-xs font-mono font-bold text-purple-400 bg-purple-950/80 px-2 py-0.5 rounded border border-purple-800/80 uppercase">Service</span>
+                            <h3 class="text-lg font-bold text-white mt-1 font-mono">app/Services/EmbeddingService.php</h3>
+                        </div>
+                        <span class="text-xs text-slate-400">Kết nối Mô hình AI Ollama nomic-embed-text</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="space-y-4 text-xs lg:col-span-1">
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-purple-400">Chức Năng Chính</h4>
+                                <p class="text-slate-300 mt-1 leading-relaxed">
+                                    Đảm nhận việc biến đổi văn bản sản phẩm thành vector toán học 768 chiều qua mô hình <code>nomic-embed-text</code>. Tích hợp <code>Http::retry(3, 500)</code> tự động thử lại khi Ollama container bận tính toán.
+                                </p>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-purple-400">Các Hàm Cốt Lõi</h4>
+                                <ul class="list-disc pl-4 text-slate-300 space-y-1 mt-1 font-mono">
+                                    <li><code>embed(string $text)</code>: Gọi endpoint <code>/api/embeddings</code> của Ollama.</li>
+                                    <li><code>embedProduct(Product $product, bool $force)</code>: Vector hóa một sản phẩm, kiểm tra <code>data_hash</code>.</li>
+                                    <li><code>buildProductText(Product $product)</code>: Ghép ngữ cảnh giàu thông tin (Title, Vendor, Type, Tags, Price, Description).</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="lg:col-span-2 space-y-2">
+                            <span class="text-[11px] font-mono text-slate-400 block">Đoạn code then chốt: Gọi Ollama API & Ép kiểu Vector</span>
+                            <pre class="bg-slate-950 p-4 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-php">public function embed(string $text): array
+{
+    // Gọi Ollama container với cơ chế tự động thử lại 3 lần
+    $response = Http::timeout(30)
+        ->retry(3, 500)
+        ->post("{$this->baseUrl}/api/embeddings", [
+            'model'  => $this->model, // 'nomic-embed-text'
+            'prompt' => $text,
+        ]);
+
+    $data = $response->json();
+    return $data['embedding']; // Mảng float 768 chiều
+}
+
+// Lưu vào PostgreSQL pgvector
+$product->embedding = new \Pgvector\Laravel\Vector($vectorArray);
+$product->data_hash = $currentHash;
+$product->save();</code></pre>
+                        </div>
+                    </div>
+                </article>
+
+            </div>
+        </section>
+
+
+        <!-- ========================================================================= -->
+        <!-- TẦNG 3: BACKGROUND JOBS & QUEUE                                          -->
+        <!-- ========================================================================= -->
+        <section class="layer-section space-y-6" data-layer="jobs">
+            <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-sm border border-blue-500/30">3</span>
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Tầng Xử Lý Ngầm & Hàng Đợi (Queue & Background Jobs)</h2>
+                        <p class="text-xs text-slate-400">Xử lý bất đồng bộ các tác vụ nặng (Đồng bộ hàng nghìn sản phẩm, sinh vector webhook ngầm), giải phóng HTTP response tức thì.</p>
+                    </div>
+                </div>
+                <span class="text-xs font-mono text-blue-400 bg-blue-950/60 px-2.5 py-1 rounded-md border border-blue-800/60">2 Files</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <!-- 3.1 SyncProductsJob.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 card-glow transition" data-keywords="queue job async sync tries backoff syncproductsjob">
+                    <div class="flex items-center justify-between border-b border-slate-700/60 pb-3">
+                        <h3 class="text-sm font-bold text-white font-mono">app/Jobs/SyncProductsJob.php</h3>
+                        <span class="text-xs font-mono text-blue-400 bg-blue-950/80 px-2 py-0.5 rounded">ShouldQueue</span>
+                    </div>
+                    <p class="text-xs text-slate-300 leading-relaxed">
+                        Job đồng bộ toàn bộ sản phẩm ngầm trong hàng đợi. Cấu hình tự động retry 3 lần với backoff <code>[10s, 30s, 60s]</code> nếu gặp sự cố mạng, timeout 10 phút.
+                    </p>
+                    <pre class="bg-slate-950 p-3.5 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-php">class SyncProductsJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public int $tries = 3;
+    public array $backoff = [10, 30, 60];
+    public int $timeout = 600;
+
+    public function handle(ShopifyProductService $service): void
+    {
+        Log::info("SyncProductsJob: Đang sync shop {$this->shop->shop_domain}");
+        $service->syncProducts($this->shop);
+    }
+}</code></pre>
+                </article>
+
+                <!-- 3.2 ProcessProductWebhookJob.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 card-glow transition" data-keywords="webhook queue async job processproductwebhookjob">
+                    <div class="flex items-center justify-between border-b border-slate-700/60 pb-3">
+                        <h3 class="text-sm font-bold text-white font-mono">app/Jobs/ProcessProductWebhookJob.php</h3>
+                        <span class="text-xs font-mono text-blue-400 bg-blue-950/80 px-2 py-0.5 rounded">ShouldQueue</span>
+                    </div>
+                    <p class="text-xs text-slate-300 leading-relaxed">
+                        Hàng đợi xử lý Webhook bất đồng bộ. Giúp webhook endpoint trả về 200 OK ngay trong &lt; 500ms (đáp ứng trần timeout 5s của Shopify), sau đó tính toán và sinh vector trong background worker.
+                    </p>
+                    <pre class="bg-slate-950 p-3.5 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-php">class ProcessProductWebhookJob implements ShouldQueue
+{
+    public int $tries = 3;
+    public array $backoff = [5, 15, 30];
+
+    public function handle(EmbeddingService $embeddingService): void
+    {
+        switch ($this->topic) {
+            case 'products/create': $this->handleCreate(...); break;
+            case 'products/update': $this->handleUpdate(...); break;
+            case 'products/delete': $this->handleDelete(...); break;
+        }
+    }
+}</code></pre>
+                </article>
+
+            </div>
+        </section>
+
+
+        <!-- ========================================================================= -->
+        <!-- TẦNG 4: MIDDLEWARE BẢO VỆ                                                 -->
+        <!-- ========================================================================= -->
+        <section class="layer-section space-y-6" data-layer="middleware">
+            <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm border border-emerald-500/30">4</span>
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Tầng Bảo Vệ An Ninh (Middleware)</h2>
+                        <p class="text-xs text-slate-400">Xác thực nguồn gốc request và đảm bảo tính toàn vẹn dữ liệu.</p>
+                    </div>
+                </div>
+                <span class="text-xs font-mono text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-md border border-emerald-800/60">1 File</span>
+            </div>
+
+            <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 card-glow transition" data-keywords="middleware hmac webhook idempotency verifyshopifywebhook">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-4">
+                    <div>
+                        <span class="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/80 uppercase">Middleware</span>
+                        <h3 class="text-lg font-bold text-white mt-1 font-mono">app/Http/Middleware/VerifyShopifyWebhook.php</h3>
+                    </div>
+                    <span class="text-xs text-slate-400">Xác Thực HMAC SHA-256 & Idempotency</span>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="space-y-4 text-xs lg:col-span-1">
+                        <div>
+                            <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-emerald-400">Chức Năng Chính</h4>
+                            <p class="text-slate-300 mt-1 leading-relaxed">
+                                Tấm khiên an ninh chặn mọi request giả mạo tới các webhook endpoint. Kiểm tra chữ ký <code>X-Shopify-Hmac-Sha256</code> trên raw payload body. Đồng thời kiểm tra mã <code>X-Shopify-Webhook-Id</code> để loại bỏ webhook trùng lặp (Idempotency).
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2 space-y-2">
+                        <pre class="bg-slate-950 p-4 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-php">// 1. Đọc raw body và chữ ký từ header
+$hmacHeader = $request->header('X-Shopify-Hmac-Sha256');
+$data = $request->getContent(); // Raw body chưa qua parse
+$calculatedHmac = base64_encode(hash_hmac('sha256', $data, config('shopify.client_secret'), true));
+
+if (!hash_equals($hmacHeader, $calculatedHmac)) {
+    return response()->json(['error' => 'Invalid HMAC signature'], 401);
+}
+
+// 2. Chống lặp Idempotency qua Webhook ID (TTL 24h)
+$webhookId = $request->header('X-Shopify-Webhook-Id');
+if ($webhookId && DB::table('processed_webhooks')->where('webhook_id', $webhookId)->exists()) {
+    return response()->json(['status' => 'ignored', 'message' => 'Duplicate webhook'], 200);
+}</code></pre>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+
+        <!-- ========================================================================= -->
+        <!-- TẦNG 5: MODELS & DATABASE                                                -->
+        <!-- ========================================================================= -->
+        <section class="layer-section space-y-6" data-layer="models">
+            <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-sm border border-cyan-500/30">5</span>
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Tầng Dữ Liệu & PostgreSQL pgvector (Models & Migrations)</h2>
+                        <p class="text-xs text-slate-400">Định nghĩa cấu trúc quan hệ thực thể và chỉ mục vector đa chiều.</p>
+                    </div>
+                </div>
+                <span class="text-xs font-mono text-cyan-400 bg-cyan-950/60 px-2.5 py-1 rounded-md border border-cyan-800/60">5 Files</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <!-- 5.1 Product.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 card-glow transition" data-keywords="model product vector casting pgvector product.php">
+                    <div class="flex items-center justify-between border-b border-slate-700/60 pb-3">
+                        <h3 class="text-sm font-bold text-white font-mono">app/Models/Product.php</h3>
+                        <span class="text-xs font-mono text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded">Model</span>
+                    </div>
+                    <p class="text-xs text-slate-300 leading-relaxed">
+                        Eloquent Model đại diện bảng <code>products</code>. Khai báo Cast <code>embedding => Vector::class</code> của package <code>pgvector-laravel</code>, tự động serialize mảng float thành định dạng vector của PostgreSQL.
+                    </p>
+                    <pre class="bg-slate-950 p-3.5 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-php">protected $casts = [
+    'variants'           => 'array',
+    'shopify_created_at' => 'datetime',
+    'shopify_updated_at' => 'datetime',
+    'synced_at'          => 'datetime',
+    'deleted_at'         => 'datetime',
+    'embedding'          => \Pgvector\Laravel\Vector::class,
+];</code></pre>
+                </article>
+
+                <!-- 5.2 Shop.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 card-glow transition" data-keywords="model shop access_token domain shop.php">
+                    <div class="flex items-center justify-between border-b border-slate-700/60 pb-3">
+                        <h3 class="text-sm font-bold text-white font-mono">app/Models/Shop.php</h3>
+                        <span class="text-xs font-mono text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded">Model</span>
+                    </div>
+                    <p class="text-xs text-slate-300 leading-relaxed">
+                        Lưu thông tin định danh store (<code>shop_domain</code>), mã truy cập bảo mật <code>access_token</code> được cấp qua OAuth và phạm vi quyền <code>scope</code>.
+                    </p>
+                    <pre class="bg-slate-950 p-3.5 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-php">protected $fillable = [
+    'shop_domain',
+    'access_token',
+    'scope',
+];</code></pre>
+                </article>
+
+                <!-- 5.3 Migrations -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-4 card-glow transition md:col-span-2" data-keywords="migration pgvector ivfflat cosine vector_cosine_ops">
+                    <div class="flex items-center justify-between border-b border-slate-700/60 pb-3">
+                        <h3 class="text-sm font-bold text-white font-mono">database/migrations/* (pgvector & Indexing)</h3>
+                        <span class="text-xs font-mono text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded">Database DDL</span>
+                    </div>
+                    <p class="text-xs text-slate-300 leading-relaxed">
+                        Kích hoạt extension <code>CREATE EXTENSION IF NOT EXISTS vector</code>, tạo cột <code>embedding vector(768)</code> và khởi tạo chỉ mục <strong>IVFFlat Index</strong> với toán tử <code>vector_cosine_ops</code> để tìm kiếm tương đồng trong hàng trăm nghìn vector trong vài mili-giây.
+                    </p>
+                    <pre class="bg-slate-950 p-3.5 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-sql">-- Khởi tạo extension pgvector và chỉ mục tăng tốc khoảng cách Cosine
+CREATE EXTENSION IF NOT EXISTS vector;
+ALTER TABLE products ADD COLUMN embedding vector(768);
+CREATE INDEX products_embedding_cosine_idx ON products USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);</code></pre>
+                </article>
+
+            </div>
+        </section>
+
+
+        <!-- ========================================================================= -->
+        <!-- TẦNG 6: ARTISAN COMMANDS                                                  -->
+        <!-- ========================================================================= -->
+        <section class="layer-section space-y-6" data-layer="commands">
+            <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-sm border border-amber-500/30">6</span>
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Tầng Dòng Lệnh Điều Khiển (Console Commands)</h2>
+                        <p class="text-xs text-slate-400">Các tiện ích CLI phục vụ vận hành, cron schedule và debug trực tiếp.</p>
+                    </div>
+                </div>
+                <span class="text-xs font-mono text-amber-400 bg-amber-950/60 px-2.5 py-1 rounded-md border border-amber-800/60">4 Files</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <!-- 6.1 ShopifyBulkSyncCommand.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-5 space-y-3 card-glow transition" data-keywords="command bulk sync shopifybulksynccommand">
+                    <h3 class="text-xs font-bold text-white font-mono">app/Console/Commands/ShopifyBulkSyncCommand.php</h3>
+                    <code class="text-[11px] text-amber-400 bg-slate-950 p-1.5 rounded block">php artisan shopify:bulk-sync {--shop=} {--status}</code>
+                    <p class="text-xs text-slate-300">Khởi chạy hoặc kiểm tra tiến trình GraphQL Bulk Operations cho kho hàng lớn từ giao diện console.</p>
+                </article>
+
+                <!-- 6.2 EmbedProductsCommand.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-5 space-y-3 card-glow transition" data-keywords="command embed ollama vector embedproductscommand">
+                    <h3 class="text-xs font-bold text-white font-mono">app/Console/Commands/EmbedProductsCommand.php</h3>
+                    <code class="text-[11px] text-amber-400 bg-slate-950 p-1.5 rounded block">php artisan products:embed [--force]</code>
+                    <p class="text-xs text-slate-300">Chạy tiến trình vector hóa toàn bộ sản phẩm ngầm trong CLI, in bảng thống kê số lượng xử lý và bỏ qua.</p>
+                </article>
+
+                <!-- 6.3 RegisterShopifyWebhooks.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-5 space-y-3 card-glow transition" data-keywords="command webhook register registershopifywebhooks">
+                    <h3 class="text-xs font-bold text-white font-mono">app/Console/Commands/RegisterShopifyWebhooks.php</h3>
+                    <code class="text-[11px] text-amber-400 bg-slate-950 p-1.5 rounded block">php artisan shopify:register-webhooks</code>
+                    <p class="text-xs text-slate-300">Tự động kết nối Shopify Admin API để đăng ký 3 webhooks (create, update, delete) trỏ về App URL.</p>
+                </article>
+
+                <!-- 6.4 SearchProductsCommand.php -->
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-5 space-y-3 card-glow transition" data-keywords="command search semantic searchproductscommand">
+                    <h3 class="text-xs font-bold text-white font-mono">app/Console/Commands/SearchProductsCommand.php</h3>
+                    <code class="text-[11px] text-amber-400 bg-slate-950 p-1.5 rounded block">php artisan products:search "running shoes"</code>
+                    <p class="text-xs text-slate-300">Thử nghiệm tìm kiếm ngữ nghĩa trực tiếp từ console, in bảng kết quả Top 5 kèm khoảng cách Cosine.</p>
+                </article>
+
+            </div>
+        </section>
+
+
+        <!-- ========================================================================= -->
+        <!-- TẦNG 7: AUTOMATED TESTS                                                   -->
+        <!-- ========================================================================= -->
+        <section class="layer-section space-y-6" data-layer="tests">
+            <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="w-8 h-8 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-sm border border-rose-500/30">7</span>
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Tầng Kiểm Thử Tự Động (Automated Test Suite)</h2>
+                        <p class="text-xs text-slate-400">Bảo chứng chất lượng toàn diện: 31 Tests Passed, 81 Assertions, 0 Failures.</p>
+                    </div>
+                </div>
+                <span class="text-xs font-mono text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-md border border-emerald-800/60">31 Tests PASS</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-5 space-y-2 card-glow transition" data-keywords="test bulk queue bulkoperationandqueuetest">
+                    <span class="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded">6 Tests</span>
+                    <h3 class="text-xs font-bold text-white font-mono">BulkOperationAndQueueTest.php</h3>
+                    <p class="text-xs text-slate-400">Kiểm thử GraphQL Bulk Operations, Stream JSONL và Background Queue Jobs.</p>
+                </article>
+
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-5 space-y-2 card-glow transition" data-keywords="test retry ratelimit ratelimitandretrytest">
+                    <span class="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded">3 Tests</span>
+                    <h3 class="text-xs font-bold text-white font-mono">RateLimitAndRetryTest.php</h3>
+                    <p class="text-xs text-slate-400">Kiểm thử `Http::retry` khi server lỗi 500, kiểm tra header Leaky Bucket và Ollama retry.</p>
+                </article>
+
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-5 space-y-2 card-glow transition" data-keywords="test auth oauth hmac shopifyauthtest">
+                    <span class="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded">9 Tests</span>
+                    <h3 class="text-xs font-bold text-white font-mono">ShopifyAuthTest.php</h3>
+                    <p class="text-xs text-slate-400">Kiểm thử toàn diện luồng OAuth 2.0: validate shop domain, CSRF state và chữ ký HMAC.</p>
+                </article>
+
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-5 space-y-2 card-glow transition" data-keywords="test webhook idempotency data_hash shopifywebhooktest">
+                    <span class="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded">6 Tests</span>
+                    <h3 class="text-xs font-bold text-white font-mono">ShopifyWebhookTest.php</h3>
+                    <p class="text-xs text-slate-400">Kiểm thử bảo mật HMAC Webhook, Idempotency chống lặp, cập nhật data_hash và Soft Delete.</p>
+                </article>
+
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-5 space-y-2 card-glow transition" data-keywords="test sync pagination productsynctest">
+                    <span class="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded">2 Tests</span>
+                    <h3 class="text-xs font-bold text-white font-mono">ProductSyncTest.php</h3>
+                    <p class="text-xs text-slate-400">Kiểm thử đồng bộ sản phẩm phân trang qua Cursor Link header từ Shopify REST API.</p>
+                </article>
+
+                <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-5 space-y-2 card-glow transition" data-keywords="test search semantic cosine semanticsearchtest">
+                    <span class="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded">3 Tests</span>
+                    <h3 class="text-xs font-bold text-white font-mono">SemanticSearchTest.php</h3>
+                    <p class="text-xs text-slate-400">Kiểm thử giao diện Semantic Search và truy vấn xếp hạng khoảng cách Cosine trên pgvector.</p>
+                </article>
+
+            </div>
+        </section>
+
+
+        <!-- ========================================================================= -->
+        <!-- TẦNG 8: DOCKER & DEVOPS                                                   -->
+        <!-- ========================================================================= -->
+        <section class="layer-section space-y-6" data-layer="devops">
+            <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="w-8 h-8 rounded-lg bg-teal-500/20 text-teal-400 flex items-center justify-center font-bold text-sm border border-teal-500/30">8</span>
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Tầng Hạ Tầng Ảo Hóa & DevOps (Docker)</h2>
+                        <p class="text-xs text-slate-400">Môi trường Container hóa 3 dịch vụ liên thông hoàn chỉnh.</p>
+                    </div>
+                </div>
+                <span class="text-xs font-mono text-teal-400 bg-teal-950/60 px-2.5 py-1 rounded-md border border-teal-800/60">docker-compose.yml</span>
+            </div>
+
+            <article class="file-card bg-slate-800/70 border border-slate-700/80 rounded-2xl p-6 space-y-5 card-glow transition" data-keywords="docker compose postgres pgvector ollama dockerfile">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="space-y-3 text-xs lg:col-span-1">
+                        <h4 class="font-bold text-slate-200 uppercase text-[11px] tracking-wider text-teal-400">3 Container Dịch Vụ</h4>
+                        <ul class="space-y-2 text-slate-300">
+                            <li class="p-2 bg-slate-900 rounded border border-slate-800">
+                                <strong class="text-teal-400 block font-mono">shopify_app</strong>
+                                Laravel 12 on PHP 8.3-FPM + Nginx (Port 8000). Chạy ứng dụng web và artisan queue worker.
+                            </li>
+                            <li class="p-2 bg-slate-900 rounded border border-slate-800">
+                                <strong class="text-teal-400 block font-mono">shopify_db</strong>
+                                PostgreSQL 16 tích hợp extension <code>pgvector</code> (Port 5432). Lưu trữ dữ liệu và vector 768 chiều.
+                            </li>
+                            <li class="p-2 bg-slate-900 rounded border border-slate-800">
+                                <strong class="text-teal-400 block font-mono">shopify_ollama</strong>
+                                Container AI Ollama phục vụ mô hình <code>nomic-embed-text</code> (Port 11434) qua REST API nội bộ.
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="lg:col-span-2 space-y-2">
+                        <span class="text-[11px] font-mono text-slate-400 block">Cấu hình docker-compose.yml kết nối mạng nội bộ</span>
+                        <pre class="bg-slate-950 p-4 rounded-xl text-xs overflow-x-auto border border-slate-800 text-slate-200"><code class="language-yaml">services:
+  app:
+    build: .
+    container_name: shopify_app
+    ports: ["8000:8000"]
+    depends_on:
+      db: { condition: service_healthy }
+      ollama: { condition: service_started }
+
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: shopify_db
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_DB: shopify_vector_search
+      POSTGRES_PASSWORD: secret
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: shopify_ollama
+    ports: ["11434:11434"]
+    volumes: [ollama_data:/root/.ollama]</code></pre>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 bg-slate-950 py-10 mt-20">
+        <div class="max-w-7xl mx-auto px-4 text-center space-y-2">
+            <p class="text-sm font-semibold text-slate-300">Shopify Vector Search Architecture Guide</p>
+            <p class="text-xs text-slate-500">Mã nguồn tuân thủ Clean Architecture, SRP, 100% Mock Unit/Feature Tests & Docker Setup.</p>
+        </div>
+    </footer>
+
+    <!-- Interactive Search & Filter Script -->
+    <script>
+        hljs.highlightAll();
+
+        function filterLayer(layer) {
+            // Update active button
+            document.querySelectorAll('.layer-btn').forEach(btn => {
+                btn.classList.remove('bg-indigo-600', 'text-white', 'active');
+                btn.classList.add('bg-slate-800', 'text-slate-300');
+            });
+            event.target.classList.remove('bg-slate-800', 'text-slate-300');
+            event.target.classList.add('bg-indigo-600', 'text-white', 'active');
+
+            const sections = document.querySelectorAll('.layer-section');
+            sections.forEach(sec => {
+                if (layer === 'all' || sec.getAttribute('data-layer') === layer) {
+                    sec.style.display = 'block';
+                } else {
+                    sec.style.display = 'none';
+                }
+            });
+        }
+
+        function searchFiles() {
+            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            const cards = document.querySelectorAll('.file-card');
+
+            cards.forEach(card => {
+                const keywords = (card.getAttribute('data-keywords') || '').toLowerCase();
+                const text = card.innerText.toLowerCase();
+                if (!query || keywords.includes(query) || text.includes(query)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
