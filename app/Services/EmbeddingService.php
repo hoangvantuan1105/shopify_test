@@ -31,30 +31,7 @@ class EmbeddingService
      */
     public function generateRepresentationText(Product $product): string
     {
-        $parts = [];
-        $parts[] = "Title: " . ($product->title ?: 'N/A');
-        
-        if ($product->description) {
-            $parts[] = "Description: " . $product->description;
-        }
-
-        if ($product->vendor) {
-            $parts[] = "Vendor: " . $product->vendor;
-        }
-
-        if ($product->product_type) {
-            $parts[] = "Category: " . $product->product_type;
-        }
-
-        if ($product->tags) {
-            $parts[] = "Tags: " . $product->tags;
-        }
-
-        if ($product->price !== null) {
-            $parts[] = "Price: $" . number_format($product->price, 2);
-        }
-
-        return implode(". ", $parts);
+        return $product->generateRepresentationText();
     }
 
     /**

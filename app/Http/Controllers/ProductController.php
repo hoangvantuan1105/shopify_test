@@ -80,7 +80,7 @@ class ProductController extends Controller
         try {
             $result = $service->syncProducts($shop);
 
-            $msg = "Đồng bộ thành công {$result['total_synced']} sản phẩm! (Thêm mới: {$result['total_created']}, Cập nhật: {$result['total_updated']})";
+            $msg = "Đồng bộ thành công {$result['total_synced']} sản phẩm! (Thêm mới: {$result['total_created']}, Cập nhật: {$result['total_updated']}, Vector mới: {$result['total_embedded']})";
 
             if ($request->wantsJson()) {
                 return response()->json([

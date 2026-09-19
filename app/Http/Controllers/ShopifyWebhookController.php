@@ -34,8 +34,8 @@ class ShopifyWebhookController extends Controller
         $createdAt = isset($payload['created_at']) ? Carbon::parse($payload['created_at']) : null;
         $updatedAt = isset($payload['updated_at']) ? Carbon::parse($payload['updated_at']) : null;
 
-        $dataRepresentation = "{$title}|{$description}|{$vendor}|{$productType}|{$tags}|{$price}";
-        $dataHash = md5($dataRepresentation);
+        // Tính toán hash chuẩn hóa theo văn bản đại diện ngữ nghĩa
+        $dataHash = Product::calculateDataHash($title, $description, $vendor, $productType, $tags, $price);
 
         return [
             'shopify_product_id' => $shopifyId,

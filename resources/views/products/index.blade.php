@@ -28,7 +28,7 @@
                         </span>
                     @endif
                 </div>
-                <p class="text-sm text-gray-500 mt-1">Đồng bộ sản phẩm từ Shopify Admin và quản lý dữ liệu Vector Search.</p>
+                <p class="text-sm text-gray-500 mt-1">Đồng bộ sản phẩm từ Shopify Admin và tự động tạo Vector Embedding để tìm kiếm ngữ nghĩa.</p>
             </div>
             
             <div class="flex items-center gap-3 flex-wrap">
@@ -39,16 +39,6 @@
                     <span> Tìm kiếm</span>
                 </a>
 
-                <form action="{{ route('products.embed') }}" method="POST" id="embedForm">
-                    @csrf
-                    <button type="submit" id="embedBtn" class="inline-flex items-center px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-lg shadow-sm transition">
-                        <svg id="embedIcon" class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                        </svg>
-                        <span id="embedText"> Tạo Vector Embedding</span>
-                    </button>
-                </form>
-
                 <form action="{{ route('products.sync') }}" method="POST" id="syncForm">
                     @csrf
                     @if($shop)
@@ -58,7 +48,7 @@
                         <svg id="syncIcon" class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                         </svg>
-                        <span id="syncText">Sync Products từ Shopify</span>
+                        <span id="syncText">Đồng bộ từ Shopify</span>
                     </button>
                 </form>
             </div>
@@ -273,20 +263,8 @@
         syncForm.addEventListener('submit', function() {
             syncBtn.disabled = true;
             syncBtn.classList.add('opacity-75', 'cursor-not-allowed');
-            syncText.innerText = 'Đang đồng bộ...';
+            syncText.innerText = 'Đang đồng bộ & Vector hóa...';
             syncIcon.classList.add('animate-spin');
-        });
-
-        const embedForm = document.getElementById('embedForm');
-        const embedBtn = document.getElementById('embedBtn');
-        const embedText = document.getElementById('embedText');
-        const embedIcon = document.getElementById('embedIcon');
-
-        embedForm.addEventListener('submit', function() {
-            embedBtn.disabled = true;
-            embedBtn.classList.add('opacity-75', 'cursor-not-allowed');
-            embedText.innerText = 'Đang tạo Vector...';
-            embedIcon.classList.add('animate-spin');
         });
     </script>
 </body>

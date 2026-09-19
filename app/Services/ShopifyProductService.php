@@ -10,10 +10,14 @@ use Illuminate\Support\Facades\Log;
 
 class ShopifyProductService
 {
+    public function __construct(
+        protected EmbeddingService $embeddingService
+    ) {}
+
     /**
-     * Đồng bộ toàn bộ sản phẩm từ Shopify về database, có xử lý phân trang (Link header pagination).
+     * Đồng bộ toàn bộ sản phẩm từ Shopify về database và tự động tạo vector embedding.
      */
-    public function syncProducts(Shop $shop): array
+    public function syncProducts(Shop $shop, bool $autoEmbed = true): array
     {
         $apiVersion = config('shopify.api_version', '2024-04');
         $baseUrl = "https://{$shop->shop_domain}/admin/api/{$apiVersion}";
@@ -22,6 +26,7 @@ class ShopifyProductService
         $totalSynced = 0;
         $totalCreated = 0;
         $totalUpdated = 0;
+        $totalEmbedded = 0;
         $syncedIds = [];
         $page = 1;
 
@@ -99,13 +104,15 @@ class ShopifyProductService
                 $createdAt = isset($p['created_at']) ? Carbon::parse($p['created_at']) : null;
                 $updatedAt = isset($p['updated_at']) ? Carbon::parse($p['updated_at']) : null;
 
-                // Tính toán hash dữ liệu đại diện để tối ưu tạo Vector sau này
-                $dataRepresentation = "{$title}|{$description}|{$vendor}|{$productType}|{$tags}|{$price}";
-                $dataHash = md5($dataRepresentation);
+                // Tính toán hash chuẩn hóa theo văn bản đại diện ngữ nghĩa
+                $calculatedHash = Product::calculateDataHash($title, $description, $vendor, $productType, $tags, $price);
 
                 $product = Product::where('shopify_product_id', $shopifyId)->first();
+                $needsEmbed = false;
 
                 if ($product) {
+                    $isChanged = ($product->data_hash !== $calculatedHash);
+
                     $product->update([
                         'title'              => $title,
                         'description'        => $description,
@@ -118,11 +125,18 @@ class ShopifyProductService
                         'shopify_created_at' => $createdAt,
                         'shopify_updated_at' => $updatedAt,
                         'synced_at'          => now(),
-                        'data_hash'          => $dataHash,
+                        'deleted_at'         => null,
+                        'data_hash'          => $calculatedHash,
                     ]);
-                    $totalUpdated++;
+
+                    if ($isChanged) {
+                        $totalUpdated++;
+                        $needsEmbed = true;
+                    } elseif ($product->embedding === null) {
+                        $needsEmbed = true;
+                    }
                 } else {
-                    Product::create([
+                    $product = Product::create([
                         'shopify_product_id' => $shopifyId,
                         'title'              => $title,
                         'description'        => $description,
@@ -135,20 +149,31 @@ class ShopifyProductService
                         'shopify_created_at' => $createdAt,
                         'shopify_updated_at' => $updatedAt,
                         'synced_at'          => now(),
-                        'data_hash'          => $dataHash,
+                        'data_hash'          => $calculatedHash,
                     ]);
                     $totalCreated++;
+                    $needsEmbed = true;
+                }
+
+                // Tự động tạo hoặc cập nhật vector embedding nếu cần
+                if ($autoEmbed && $needsEmbed) {
+                    try {
+                        $embedded = $this->embeddingService->embedProduct($product, force: true);
+                        if ($embedded) {
+                            $totalEmbedded++;
+                        }
+                    } catch (\Exception $e) {
+                        Log::error("Lỗi tự động tạo embedding cho sản phẩm #{$product->id}: " . $e->getMessage());
+                    }
                 }
 
                 $totalSynced++;
             }
 
-            // Xử lý phân trang thông qua Link header của Shopify
             $linkHeader = $response->header('Link');
             $nextUrl = null;
 
             if ($linkHeader) {
-                // Link header format: <https://.../products.json?limit=250&page_info=xxx>; rel="next"
                 $links = explode(',', $linkHeader);
                 foreach ($links as $link) {
                     if (str_contains($link, 'rel="next"')) {
@@ -179,10 +204,11 @@ class ShopifyProductService
         }
 
         return [
-            'total_synced'  => $totalSynced,
-            'total_created' => $totalCreated,
-            'total_updated' => $totalUpdated,
-            'total_deleted' => $totalDeleted,
+            'total_synced'   => $totalSynced,
+            'total_created'  => $totalCreated,
+            'total_updated'  => $totalUpdated,
+            'total_deleted'  => $totalDeleted,
+            'total_embedded' => $totalEmbedded,
         ];
     }
 }

@@ -41,7 +41,7 @@ class VerifyShopifyWebhook
                 Log::info("Webhook {$webhookId} đã được xử lý trước đó. Bỏ qua để đảm bảo tính lũy đẳng (idempotency).");
                 return response()->json([
                     'status'  => 'skipped',
-                    'message' => 'Duplicate webhook ignored (Idempotent)',
+                    'message' => 'Duplicate webhook ignored',
                 ], 200);
             }
         }
